@@ -1,18 +1,24 @@
-import { sql } from "drizzle-orm";
-import { pgTable, text, varchar } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, varchar } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
-export const users = pgTable("users", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  username: text("username").notNull().unique(),
-  password: text("password").notNull(),
+export const rooms = pgTable("rooms", {
+  id: varchar("id").primaryKey(),
+  createdAt: timestamp("created_at").defaultNow(),
 });
 
-export const insertUserSchema = createInsertSchema(users).pick({
-  username: true,
-  password: true,
+export const messages = pgTable("messages", {
+  id: serial("id").primaryKey(),
+  roomId: varchar("room_id").notNull(),
+  username: text("username").notNull(),
+  content: text("content").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
 });
 
-export type InsertUser = z.infer<typeof insertUserSchema>;
-export type User = typeof users.$inferSelect;
+export const insertRoomSchema = createInsertSchema(rooms).pick({ id: true });
+export const insertMessageSchema = createInsertSchema(messages).pick({ roomId: true, username: true, content: true });
+
+export type Room = typeof rooms.$inferSelect;
+export type Message = typeof messages.$inferSelect;
+export type InsertRoom = z.infer<typeof insertRoomSchema>;
+export type InsertMessage = z.infer<typeof insertMessageSchema>;
