@@ -1,6 +1,6 @@
 import { db } from "./db";
-import { rooms, messages } from "@shared/schema";
-import type { InsertRoom, Room, InsertMessage, Message } from "@shared/schema";
+import { rooms, messages, users } from "@shared/schema";
+import type { InsertRoom, Room, InsertMessage, Message, User, InsertUser } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { randomBytes } from "crypto";
 
@@ -9,6 +9,9 @@ export interface IStorage {
   getRoom(id: string): Promise<Room | undefined>;
   getRoomMessages(roomId: string): Promise<Message[]>;
   createMessage(msg: InsertMessage): Promise<Message>;
+  
+  updateUserStatus(username: string, isOnline: boolean): Promise<User>;
+  getUser(username: string): Promise<User | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -30,6 +33,27 @@ export class DatabaseStorage implements IStorage {
   async createMessage(msg: InsertMessage): Promise<Message> {
     const [message] = await db.insert(messages).values(msg).returning();
     return message;
+  }
+
+  async updateUserStatus(username: string, isOnline: boolean): Promise<User> {
+    const [existing] = await db.select().from(users).where(eq(users.username, username));
+    if (existing) {
+      const [updated] = await db.update(users)
+        .set({ isOnline, lastSeen: new Date() })
+        .where(eq(users.username, username))
+        .returning();
+      return updated;
+    } else {
+      const [user] = await db.insert(users)
+        .values({ username, isOnline, lastSeen: new Date() })
+        .returning();
+      return user;
+    }
+  }
+
+  async getUser(username: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.username, username));
+    return user;
   }
 }
 

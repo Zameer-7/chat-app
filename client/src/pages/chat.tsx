@@ -25,7 +25,7 @@ export default function Chat() {
   const { data: messages = [], isLoading: isLoadingMessages } = useRoomMessages(roomId);
   
   // WebSocket
-  const { status: wsStatus, sendMessage } = useChatWebSocket(roomId, username);
+  const { status: wsStatus, sendMessage, sendTypingStatus, typingUsers, onlineUsers } = useChatWebSocket(roomId, username);
 
   // Redirect if no username
   useEffect(() => {
@@ -34,7 +34,7 @@ export default function Chat() {
     }
   }, [username, isLoaded, setLocation]);
 
-  // Redirect if room not found (404 returns null from our hook)
+  // Redirect if room not found
   useEffect(() => {
     if (room === null) {
       setLocation("/");
@@ -46,7 +46,7 @@ export default function Chat() {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages]);
+  }, [messages, typingUsers]);
 
   const copyRoomId = () => {
     navigator.clipboard.writeText(roomId);
@@ -73,6 +73,8 @@ export default function Chat() {
       </div>
     );
   }
+
+  const typingList = Array.from(typingUsers).filter(u => u !== username);
 
   return (
     <div className="flex flex-col h-[100dvh] bg-background">
@@ -123,7 +125,6 @@ export default function Chat() {
         className="flex-1 overflow-y-auto bg-chat-pattern p-4 md:p-6 scroll-smooth"
       >
         <div className="max-w-4xl mx-auto flex flex-col justify-end min-h-full pb-2">
-          {/* Top disclaimer/info */}
           <div className="flex justify-center mb-8">
             <div className="bg-background/80 backdrop-blur-sm text-muted-foreground text-xs px-4 py-2 rounded-lg shadow-sm border border-border/50 text-center max-w-sm">
               Messages are end-to-end encrypted. No one outside of this chat, not even ChatSpace, can read or listen to them.
@@ -141,9 +142,9 @@ export default function Chat() {
           ) : (
             <div className="space-y-2">
               {messages.map((msg, idx) => {
-                // Determine if we should show the avatar/name (only if previous message wasn't from same user)
                 const showAvatar = idx === 0 || messages[idx - 1].username !== msg.username;
                 const isOwn = msg.username === username;
+                const userPresence = onlineUsers[msg.username];
                 
                 return (
                   <ChatBubble 
@@ -151,9 +152,18 @@ export default function Chat() {
                     message={msg} 
                     isOwn={isOwn} 
                     showAvatar={showAvatar}
+                    isOnline={userPresence?.status === 'online'}
                   />
                 );
               })}
+              
+              {typingList.length > 0 && (
+                <div className="flex justify-start animate-in fade-in slide-in-from-bottom-2 duration-300">
+                  <div className="bg-muted text-muted-foreground text-xs px-3 py-1.5 rounded-full italic">
+                    {typingList.join(', ')} {typingList.length === 1 ? 'is' : 'are'} typing...
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -162,6 +172,7 @@ export default function Chat() {
       {/* Input Area */}
       <ChatInput 
         onSend={sendMessage} 
+        onTypingStatus={sendTypingStatus}
         disabled={wsStatus !== "connected"} 
       />
     </div>

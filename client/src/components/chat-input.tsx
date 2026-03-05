@@ -1,15 +1,18 @@
 import { useState, useRef, useEffect } from "react";
 import { Send, Smile } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useTypingIndicator } from "@/hooks/use-typing-indicator";
 
 interface ChatInputProps {
   onSend: (content: string) => void;
+  onTypingStatus: (isTyping: boolean) => void;
   disabled?: boolean;
 }
 
-export function ChatInput({ onSend, disabled }: ChatInputProps) {
+export function ChatInput({ onSend, onTypingStatus, disabled }: ChatInputProps) {
   const [content, setContent] = useState("");
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const { handleKeyPress, stopTyping } = useTypingIndicator(onTypingStatus);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -18,8 +21,8 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
     
     onSend(trimmed);
     setContent("");
+    stopTyping();
     
-    // Reset textarea height
     if (inputRef.current) {
       inputRef.current.style.height = 'auto';
     }
@@ -29,12 +32,13 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSubmit(e);
+    } else {
+      handleKeyPress();
     }
   };
 
   const handleInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setContent(e.target.value);
-    // Auto-resize textarea
     e.target.style.height = 'auto';
     e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;
   };

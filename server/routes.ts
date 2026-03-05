@@ -46,6 +46,7 @@ export async function registerRoutes(
   // Set up WebSocket server for real-time messaging
   const wss = new WebSocketServer({ noServer: true });
   const clients = new Map<string, Set<{ws: WebSocket, username: string}>>();
+  const globalClients = new Map<string, WebSocket>();
 
   httpServer.on('upgrade', (request, socket, head) => {
     const { pathname, query } = parse(request.url || '', true);
@@ -60,41 +61,44 @@ export async function registerRoutes(
         wss.emit('connection', ws, request, roomId, username);
       });
     }
-    // We intentionally don't destroy the socket for other paths because
-    // Vite needs the upgrade event for HMR (Hot Module Replacement)
   });
 
-  wss.on('connection', (ws, request, roomId: string, username: string) => {
+  wss.on('connection', async (ws, request, roomId: string, username: string) => {
     if (!clients.has(roomId)) {
       clients.set(roomId, new Set());
     }
     const roomClients = clients.get(roomId)!;
     const clientState = { ws, username };
     roomClients.add(clientState);
+    globalClients.set(username, ws);
 
-    // Broadcast user joined
-    const joinMsg = JSON.stringify({
-        type: 'system',
-        content: `${username} has joined the chat`
+    // Mark user as online
+    await storage.updateUserStatus(username, true);
+
+    // Broadcast user joined & presence
+    const presenceMsg = JSON.stringify({
+        type: 'user_status',
+        userId: username,
+        status: 'online'
     });
-    roomClients.forEach(client => {
-        if (client.ws.readyState === WebSocket.OPEN) {
-            client.ws.send(joinMsg);
-        }
+    
+    // Broadcast to everyone (simplified for presence)
+    wss.clients.forEach(client => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(presenceMsg);
+      }
     });
 
     ws.on('message', async (data) => {
       try {
         const parsed = JSON.parse(data.toString());
         if (parsed.type === 'message' && parsed.content) {
-            // Save to DB
             const savedMsg = await storage.createMessage({
                 roomId,
                 username,
                 content: parsed.content
             });
             
-            // Broadcast to all clients in room
             const outMsg = JSON.stringify({
                 type: 'message',
                 ...savedMsg
@@ -104,27 +108,44 @@ export async function registerRoutes(
                     client.ws.send(outMsg);
                 }
             });
+        } else if (parsed.type === 'typing_start' || parsed.type === 'typing_stop') {
+            const typingMsg = JSON.stringify({
+                type: parsed.type,
+                roomId,
+                userId: username
+            });
+            roomClients.forEach(client => {
+                if (client.ws !== ws && client.ws.readyState === WebSocket.OPEN) {
+                    client.ws.send(typingMsg);
+                }
+            });
         }
       } catch (e) {
         console.error('Invalid message format', e);
       }
     });
 
-    ws.on('close', () => {
+    ws.on('close', async () => {
         roomClients.delete(clientState);
+        globalClients.delete(username);
+        
+        await storage.updateUserStatus(username, false);
+
+        const presenceMsg = JSON.stringify({
+            type: 'user_status',
+            userId: username,
+            status: 'offline',
+            lastSeen: new Date().toISOString()
+        });
+
+        wss.clients.forEach(client => {
+          if (client.readyState === WebSocket.OPEN) {
+            client.send(presenceMsg);
+          }
+        });
+
         if (roomClients.size === 0) {
             clients.delete(roomId);
-        } else {
-            // Broadcast user left
-            const leaveMsg = JSON.stringify({
-                type: 'system',
-                content: `${username} has left the chat`
-            });
-            roomClients.forEach(client => {
-                if (client.ws.readyState === WebSocket.OPEN) {
-                    client.ws.send(leaveMsg);
-                }
-            });
         }
     });
   });

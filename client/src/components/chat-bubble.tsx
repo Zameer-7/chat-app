@@ -12,10 +12,10 @@ interface ChatBubbleProps {
   message: MessageResponse;
   isOwn: boolean;
   showAvatar?: boolean;
+  isOnline?: boolean;
 }
 
-export function ChatBubble({ message, isOwn, showAvatar = true }: ChatBubbleProps) {
-  // Safe date parsing for JSON strings
+export function ChatBubble({ message, isOwn, showAvatar = true, isOnline }: ChatBubbleProps) {
   const date = message.createdAt ? new Date(message.createdAt) : new Date();
 
   return (
@@ -33,9 +33,17 @@ export function ChatBubble({ message, isOwn, showAvatar = true }: ChatBubbleProp
         isOwn ? "items-end" : "items-start"
       )}>
         {showAvatar && !isOwn && (
-          <span className="text-xs font-semibold text-muted-foreground ml-1">
-            {message.username}
-          </span>
+          <div className="flex items-center gap-1.5 ml-1">
+            <span className="text-xs font-semibold text-muted-foreground">
+              {message.username}
+            </span>
+            {isOnline !== undefined && (
+              <span className={cn(
+                "w-1.5 h-1.5 rounded-full",
+                isOnline ? "bg-green-500 shadow-[0_0_4px_rgba(34,197,94,0.5)]" : "bg-gray-400"
+              )} title={isOnline ? "Online" : "Offline"} />
+            )}
+          </div>
         )}
         
         <div className={cn(

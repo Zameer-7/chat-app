@@ -7,6 +7,8 @@ type ConnectionStatus = "connecting" | "connected" | "disconnected";
 export function useChatWebSocket(roomId: string, username: string | null) {
   const queryClient = useQueryClient();
   const [status, setStatus] = useState<ConnectionStatus>("connecting");
+  const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
+  const [onlineUsers, setOnlineUsers] = useState<Record<string, { status: string, lastSeen?: string }>>({});
   const wsRef = useRef<WebSocket | null>(null);
 
   const connect = useCallback(() => {
@@ -24,23 +26,40 @@ export function useChatWebSocket(roomId: string, username: string | null) {
 
     ws.onclose = () => {
       setStatus("disconnected");
-      // Optional: implement exponential backoff reconnection here
     };
 
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
         
-        // Append new message to the query cache so UI updates instantly
-        queryClient.setQueryData<MessageResponse[]>(
-          [api.rooms.messages.list.path, roomId],
-          (old) => {
-            if (!old) return [data];
-            // Prevent duplicates if we implement optimistic UI later
-            if (old.some(m => m.id === data.id)) return old; 
-            return [...old, data];
-          }
-        );
+        if (data.type === 'message') {
+          queryClient.setQueryData<MessageResponse[]>(
+            [api.rooms.messages.list.path, roomId],
+            (old) => {
+              if (!old) return [data];
+              if (old.some(m => m.id === data.id)) return old; 
+              return [...old, data];
+            }
+          );
+          setTypingUsers(prev => {
+            const next = new Set(prev);
+            next.delete(data.username);
+            return next;
+          });
+        } else if (data.type === 'typing_start') {
+          setTypingUsers(prev => new Set(prev).add(data.userId));
+        } else if (data.type === 'typing_stop') {
+          setTypingUsers(prev => {
+            const next = new Set(prev);
+            next.delete(data.userId);
+            return next;
+          });
+        } else if (data.type === 'user_status') {
+          setOnlineUsers(prev => ({
+            ...prev,
+            [data.userId]: { status: data.status, lastSeen: data.lastSeen }
+          }));
+        }
       } catch (err) {
         console.error("Failed to parse websocket message", err);
       }
@@ -60,10 +79,16 @@ export function useChatWebSocket(roomId: string, username: string | null) {
   const sendMessage = useCallback((content: string) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type: "message", content }));
-    } else {
-      console.warn("WebSocket is not connected");
     }
   }, []);
 
-  return { status, sendMessage };
+  const sendTypingStatus = useCallback((isTyping: boolean) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ 
+        type: isTyping ? "typing_start" : "typing_stop" 
+      }));
+    }
+  }, []);
+
+  return { status, sendMessage, sendTypingStatus, typingUsers, onlineUsers };
 }
