@@ -48,7 +48,9 @@ export default function RoomChatPage() {
   const [liveMessages, setLiveMessages] = useState<ChatMessage[]>([]);
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
   const [imageUploading, setImageUploading] = useState(false);
+  const [typingUsers, setTypingUsers] = useState<string[]>([]);
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const PAGE_SIZE = 30;
 
@@ -123,6 +125,7 @@ export default function RoomChatPage() {
     setShowMembers(false);
     setConfirmDelete(false);
     setReplyTo(null);
+    setTypingUsers([]);
   }, [roomId]);
 
   useEffect(() => {
@@ -187,6 +190,15 @@ export default function RoomChatPage() {
         queryClient.invalidateQueries({ queryKey: ["room-messages", roomId] });
       }
     }
+    if (lastEvent.type === "typing") {
+      const uname = String(lastEvent.username || "");
+      if (!uname) return;
+      if (lastEvent.isTyping) {
+        setTypingUsers((prev) => (prev.includes(uname) ? prev : [...prev, uname]));
+      } else {
+        setTypingUsers((prev) => prev.filter((u) => u !== uname));
+      }
+    }
   }, [lastEvent, roomId, queryClient, setLocation, toast]);
 
   useEffect(() => {
@@ -210,6 +222,17 @@ export default function RoomChatPage() {
   const canSend = Boolean(text.trim()) && status === "connected" && !left;
   const isOwner = room?.createdBy === user?.id;
   const displayName = room?.roomName || room?.id || roomId;
+
+  const handleTextChange = (value: string) => {
+    setText(value);
+    if (status === "connected" && !left) {
+      send({ type: "typing", isTyping: true });
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = setTimeout(() => {
+        send({ type: "typing", isTyping: false });
+      }, 1500);
+    }
+  };
 
   const optimisticInsert = (payload: Partial<ChatMessage>) => {
     const id = tempId.current--;
@@ -238,6 +261,9 @@ export default function RoomChatPage() {
   const handleSend = (e: React.FormEvent) => {
     e.preventDefault();
     if (!canSend) return;
+    // Stop typing indicator immediately on send
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    send({ type: "typing", isTyping: false });
     const clientMessageId = optimisticInsert({
       content: text.trim(),
       replyToId: replyTo?.id,
@@ -491,6 +517,7 @@ export default function RoomChatPage() {
         onLoadMore={() => { if (hasNextPage && !isFetchingNextPage) fetchNextPage(); }}
         isLoadingMore={isFetchingNextPage}
         hasMore={hasNextPage !== false}
+        typingUsers={typingUsers}
       />
 
       {/* Left-room banner */}
@@ -578,7 +605,7 @@ export default function RoomChatPage() {
         <Button type="button" variant="secondary" onClick={() => setShowEmoji((s) => !s)}>😊</Button>
         <Input
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => handleTextChange(e.target.value)}
           placeholder={left ? "You left this room" : "Type a room message"}
           disabled={left}
           className="flex-1 h-10"

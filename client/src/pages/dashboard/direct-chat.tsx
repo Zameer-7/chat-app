@@ -40,12 +40,15 @@ export default function DirectChatPage() {
   const { status, lastEvent, send } = useSocket(wsPath);
 
   const [liveMessages, setLiveMessages] = useState<ChatMessage[]>([]);
+  const [typingUsers, setTypingUsers] = useState<string[]>([]);
   const tempId = useRef(-1);
   const emojiPickerRef = useRef<HTMLDivElement>(null);
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     setLiveMessages([]);
     setReplyTo(null);
+    setTypingUsers([]);
   }, [friendId]);
 
   useEffect(() => {
@@ -75,6 +78,15 @@ export default function DirectChatPage() {
         );
       } else if (lastEvent.scope === "me" && lastEvent.userId === user?.id) {
         setLiveMessages((prev) => prev.filter((m) => m.id !== msgId));
+      }
+    }
+    if (lastEvent?.type === "typing") {
+      const uname = String(lastEvent.username || "");
+      if (!uname) return;
+      if (lastEvent.isTyping) {
+        setTypingUsers((prev) => (prev.includes(uname) ? prev : [...prev, uname]));
+      } else {
+        setTypingUsers((prev) => prev.filter((u) => u !== uname));
       }
     }
   }, [lastEvent]);
@@ -121,10 +133,24 @@ export default function DirectChatPage() {
     return String(id);
   };
 
+  const handleTextChange = (value: string) => {
+    setText(value);
+    if (status === "connected") {
+      send({ type: "typing", isTyping: true });
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = setTimeout(() => {
+        send({ type: "typing", isTyping: false });
+      }, 1500);
+    }
+  };
+
   const canSend = Boolean(text.trim()) && status === "connected";
   const handleSend = (e: React.FormEvent) => {
     e.preventDefault();
     if (!canSend) return;
+    // Stop typing indicator immediately on send
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    send({ type: "typing", isTyping: false });
     const clientMessageId = optimisticInsert({
       content: text.trim(),
       replyToId: replyTo?.id,
@@ -174,7 +200,10 @@ export default function DirectChatPage() {
           </button>
           <h2 className="text-2xl font-black">Chat with {friend?.nickname || `User ${friendId}`}</h2>
         </div>
-        <p className="text-sm text-muted-foreground">{friend?.isOnline ? "Online" : "Offline"}</p>
+        <div className="flex items-center gap-1.5">
+          <span className={`w-2.5 h-2.5 rounded-full ${friend?.isOnline ? "bg-green-500" : "bg-gray-400"}`} />
+          <span className="text-sm text-muted-foreground">{friend?.isOnline ? "Online" : "Offline"}</span>
+        </div>
       </div>
 
       <ChatWindow
@@ -183,8 +212,8 @@ export default function DirectChatPage() {
         onReact={(messageId, reaction) => send({ type: "reaction_add", messageId, reaction })}
         onDelete={(messageId, scope) => send({ type: "message_delete", messageId, scope })}
         onReply={(message) => setReplyTo(message)}
+        typingUsers={typingUsers}
       />
-      <p className="text-xs text-muted-foreground px-1">Typing indicator area</p>
 
       {showEmoji && (
         <div ref={emojiPickerRef} className="rounded-xl border bg-card p-2 w-fit">
@@ -252,7 +281,7 @@ export default function DirectChatPage() {
         </Button>
         <Button type="button" variant="secondary" onClick={() => setShowGif((s) => !s)}>GIF</Button>
         <Button type="button" variant="secondary" onClick={() => setShowEmoji((s) => !s)}>😊</Button>
-        <Input value={text} onChange={(e) => setText(e.target.value)} placeholder="Type a direct message" />
+        <Input value={text} onChange={(e) => handleTextChange(e.target.value)} placeholder="Type a direct message" />
         <Button type="submit" disabled={!canSend}>Send</Button>
       </form>
     </div>

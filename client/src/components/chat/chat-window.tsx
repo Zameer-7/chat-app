@@ -1,4 +1,5 @@
 import { format } from "date-fns";
+import { ChevronDown } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChatMessage } from "@/services/chat-api";
 
@@ -30,6 +31,12 @@ function renderStatus(status: ChatMessage["status"]) {
   return <span className="ml-1 text-[11px] text-blue-500">✓✓</span>;
 }
 
+function formatTypingText(users: string[]): string {
+  if (users.length === 1) return `${users[0]} is typing…`;
+  if (users.length === 2) return `${users[0]} and ${users[1]} are typing…`;
+  return "Several people are typing…";
+}
+
 export function ChatWindow({
   messages,
   currentUserId,
@@ -39,6 +46,7 @@ export function ChatWindow({
   onLoadMore,
   isLoadingMore,
   hasMore,
+  typingUsers = [],
 }: {
   messages: ChatMessage[];
   currentUserId: number;
@@ -48,9 +56,11 @@ export function ChatWindow({
   onLoadMore?: () => void;
   isLoadingMore?: boolean;
   hasMore?: boolean;
+  typingUsers?: string[];
 }) {
   const [menu, setMenu] = useState<MenuState>(null);
   const [reactionMenu, setReactionMenu] = useState<ReactionMenuState>(null);
+  const [atBottom, setAtBottom] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
   const prevScrollHeightRef = useRef<number>(0);
   const isInitialLoadRef = useRef(true);
@@ -59,6 +69,21 @@ export function ChatWindow({
     () => messages.find((message) => message.id === menu?.messageId),
     [menu?.messageId, messages],
   );
+
+  // Navigate to a replied-to message and briefly highlight it
+  const navigateToMessage = useCallback((targetId: number) => {
+    const el = document.getElementById(`message-${targetId}`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    el.classList.add("!bg-yellow-100", "dark:!bg-yellow-800/40");
+    setTimeout(() => el.classList.remove("!bg-yellow-100", "dark:!bg-yellow-800/40"), 1200);
+  }, []);
+
+  const scrollToBottom = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+  }, []);
 
   // Auto-scroll to bottom on initial load or new messages at bottom
   useEffect(() => {
@@ -94,15 +119,26 @@ export function ChatWindow({
     prevScrollHeightRef.current = el.scrollHeight;
   }, [messages]);
 
-  // Infinite scroll: detect scroll to top
+  // Scroll to bottom when typing indicator appears (if already near bottom)
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
+    if (dist < 150) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+  }, [typingUsers.length]);
+
+  // Infinite scroll: detect scroll to top; also track atBottom
   const handleScroll = useCallback(() => {
     const el = scrollRef.current;
-    if (!el || !onLoadMore || isLoadingMore || hasMore === false) return;
+    if (!el) return;
 
-    if (el.scrollTop < 60) {
+    if (onLoadMore && !isLoadingMore && hasMore !== false && el.scrollTop < 60) {
       prevScrollHeightRef.current = el.scrollHeight;
       onLoadMore();
     }
+
+    const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
+    setAtBottom(dist < 80);
   }, [onLoadMore, isLoadingMore, hasMore]);
 
   useEffect(() => {
@@ -110,17 +146,14 @@ export function ChatWindow({
       setMenu(null);
       setReactionMenu(null);
     };
-
+    const keyHandler = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeMenus();
+    };
     window.addEventListener("resize", closeMenus);
-    window.addEventListener("keydown", (event) => {
-      if (event.key === "Escape") {
-        closeMenus();
-      }
-    });
-
+    window.addEventListener("keydown", keyHandler);
     return () => {
       window.removeEventListener("resize", closeMenus);
-      window.removeEventListener("keydown", closeMenus);
+      window.removeEventListener("keydown", keyHandler);
     };
   }, []);
 
@@ -144,7 +177,11 @@ export function ChatWindow({
           const isOwn = message.senderId === currentUserId;
 
           return (
-            <div key={message.id} className={`flex rounded-lg transition-colors hover:bg-gray-100 dark:hover:bg-gray-700 ${isOwn ? "justify-end" : "justify-start"}`}>
+            <div
+              id={`message-${message.id}`}
+              key={message.id}
+              className={`flex rounded-lg transition-colors hover:bg-gray-100 dark:hover:bg-gray-700 ${isOwn ? "justify-end" : "justify-start"}`}
+            >
               <div
                 className={`group max-w-[70%] rounded-2xl px-4 py-2 shadow-sm transition-transform hover:-translate-y-0.5 ${
                   isOwn ? "bg-[hsl(var(--bubble-out))] rounded-tr-sm" : "bg-[hsl(var(--bubble-in))] border rounded-tl-sm"
@@ -160,12 +197,21 @@ export function ChatWindow({
                   {message.senderNickname}
                 </p>
 
-                {/* Reply preview */}
+                {/* Reply preview — click to jump to original message */}
                 {message.replyToId && message.replyToNickname && (
-                  <div className="mb-1.5 rounded-lg border-l-2 border-primary/60 bg-muted/50 px-2.5 py-1.5">
-                    <p className="text-[10px] font-semibold text-primary/80">{message.replyToNickname}</p>
-                    <p className={`text-xs line-clamp-2 ${isOwn ? "bubble-reply-text-out" : "bubble-reply-text-in"}`}>{message.replyToContent || "..."}</p>
-                  </div>
+                  <button
+                    type="button"
+                    className="mb-1.5 w-full text-left rounded-lg border-l-4 border-primary/60 bg-black/10 dark:bg-white/10 px-2.5 py-1.5 hover:bg-black/15 dark:hover:bg-white/15 transition-colors"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (message.replyToId) navigateToMessage(message.replyToId);
+                    }}
+                  >
+                    <p className="text-[10px] font-semibold text-primary/90">{message.replyToNickname}</p>
+                    <p className={`text-xs line-clamp-2 ${isOwn ? "bubble-reply-text-out" : "bubble-reply-text-in"}`}>
+                      {message.replyToContent || "…"}
+                    </p>
+                  </button>
                 )}
 
                 {message.deleted ? (
@@ -202,8 +248,36 @@ export function ChatWindow({
           );
         })}
 
-        {!messages.length && !isLoadingMore && <p className="text-sm text-muted-foreground text-center mt-20">No messages yet. Start the conversation.</p>}
+        {/* Typing indicator bubbles */}
+        {typingUsers.length > 0 && (
+          <div className="flex justify-start">
+            <div className="flex items-center gap-2 rounded-2xl border bg-[hsl(var(--bubble-in))] px-4 py-2 text-xs rounded-tl-sm shadow-sm">
+              <span className="flex gap-0.5 items-end pb-0.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/70 animate-bounce [animation-delay:0ms]" />
+                <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/70 animate-bounce [animation-delay:150ms]" />
+                <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/70 animate-bounce [animation-delay:300ms]" />
+              </span>
+              <span className="text-muted-foreground">{formatTypingText(typingUsers)}</span>
+            </div>
+          </div>
+        )}
+
+        {!messages.length && !isLoadingMore && (
+          <p className="text-sm text-muted-foreground text-center mt-20">No messages yet. Start the conversation.</p>
+        )}
       </div>
+
+      {/* Floating scroll-to-bottom button */}
+      {!atBottom && (
+        <button
+          type="button"
+          onClick={scrollToBottom}
+          className="absolute bottom-4 right-4 z-10 flex h-8 w-8 items-center justify-center rounded-full border bg-background shadow-md hover:bg-muted transition-colors"
+          title="Scroll to bottom"
+        >
+          <ChevronDown className="h-4 w-4" />
+        </button>
+      )}
 
       {menu && contextMessage && (
         <div
