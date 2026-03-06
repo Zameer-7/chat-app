@@ -1,11 +1,17 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" fill="none">
   <defs>
-    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#7c3aed"/>
-      <stop offset="100%" style="stop-color:#06b6d4"/>
+    <linearGradient id="vibelyBubble" x1="20" y1="18" x2="103" y2="108" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFA94D" />
+      <stop offset="0.48" stop-color="#FF5F7C" />
+      <stop offset="1" stop-color="#46D7C2" />
     </linearGradient>
   </defs>
-  <rect width="64" height="64" rx="14" fill="url(#bg)"/>
-  <text x="32" y="46" font-family="Arial, sans-serif" font-size="38" font-weight="900"
-        text-anchor="middle" fill="white" letter-spacing="-1">V</text>
+  <path
+    d="M64 8C34.73 8 11 30.83 11 59c0 12.53 4.69 23.99 12.49 32.82L16 120l28.95-15.08A56.04 56.04 0 0 0 64 110c29.27 0 53-22.83 53-51S93.27 8 64 8Z"
+    fill="url(#vibelyBubble)"
+  />
+  <path
+    d="M45.72 38.06c-5.51 0-10.3 4.68-10.3 10.73 0 5.57 3.95 9.67 9.64 14.89 2.97 2.72 6.38 5.58 10.3 8.78 3.92-3.2 7.33-6.06 10.3-8.78 5.69-5.22 9.64-9.32 9.64-14.89 0-6.05-4.79-10.73-10.3-10.73-3.41 0-6.63 1.64-8.78 4.48l-1.86 2.45-1.86-2.45c-2.15-2.84-5.37-4.48-8.78-4.48Z"
+    fill="#FFF8F8"
+  />
 </svg>

@@ -146,7 +146,7 @@ export function ChatWindow({
           return (
             <div key={message.id} className={`flex rounded-lg transition-colors hover:bg-gray-100 dark:hover:bg-gray-700 ${isOwn ? "justify-end" : "justify-start"}`}>
               <div
-                className={`group max-w-[80%] rounded-2xl px-4 py-2 shadow-sm transition-transform hover:-translate-y-0.5 ${
+                className={`group max-w-[70%] rounded-2xl px-4 py-2 shadow-sm transition-transform hover:-translate-y-0.5 ${
                   isOwn ? "bg-[hsl(var(--bubble-out))] rounded-tr-sm" : "bg-[hsl(var(--bubble-in))] border rounded-tl-sm"
                 }`}
                 onContextMenu={(event) => {
@@ -156,7 +156,7 @@ export function ChatWindow({
                   setMenu({ messageId: message.id, ...position });
                 }}
               >
-                <p className="text-xs text-muted-foreground mb-1" title={format(new Date(message.createdAt), "PPpp")}>
+                <p className={`bubble-name ${isOwn ? "bubble-name-out" : "bubble-name-in"}`} title={format(new Date(message.createdAt), "PPpp")}>
                   {message.senderNickname}
                 </p>
 
@@ -164,14 +164,21 @@ export function ChatWindow({
                 {message.replyToId && message.replyToNickname && (
                   <div className="mb-1.5 rounded-lg border-l-2 border-primary/60 bg-muted/50 px-2.5 py-1.5">
                     <p className="text-[10px] font-semibold text-primary/80">{message.replyToNickname}</p>
-                    <p className="text-xs text-muted-foreground line-clamp-2">{message.replyToContent || "..."}</p>
+                    <p className={`text-xs line-clamp-2 ${isOwn ? "bubble-reply-text-out" : "bubble-reply-text-in"}`}>{message.replyToContent || "..."}</p>
                   </div>
                 )}
 
                 {message.deleted ? (
-                  <p className="text-sm italic text-muted-foreground">This message was deleted</p>
+                  <p className={`text-sm italic ${isOwn ? "bubble-meta-out" : "bubble-meta-in"}`}>This message was deleted</p>
                 ) : message.messageType === "gif" && message.gifUrl ? (
                   <img src={message.gifUrl} alt="gif" className="max-h-56 w-full rounded-lg object-cover" />
+                ) : message.messageType === "image" && message.gifUrl ? (
+                  <img
+                    src={message.gifUrl}
+                    alt="Image"
+                    className="max-w-full sm:max-w-xs rounded-lg"
+                    loading="lazy"
+                  />
                 ) : (
                   <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
                 )}
@@ -186,7 +193,7 @@ export function ChatWindow({
                   </div>
                 )}
 
-                <p className="text-[10px] text-muted-foreground mt-1 text-right inline-flex items-center justify-end w-full" title={format(new Date(message.createdAt), "PPpp")}>
+                <p className={`text-[10px] mt-1 text-right inline-flex items-center justify-end w-full ${isOwn ? "bubble-meta-out" : "bubble-meta-in"}`} title={format(new Date(message.createdAt), "PPpp")}>
                   <span className="opacity-80 group-hover:opacity-100">{format(new Date(message.createdAt), "HH:mm")}</span>
                   {isOwn && renderStatus(message.status || "sent")}
                 </p>

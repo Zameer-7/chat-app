@@ -332,7 +332,7 @@ export const repository = {
     `);
   },
 
-  async createRoomMessage(data: { roomId: string; senderId: number; content?: string; messageType?: "text" | "gif"; gifUrl?: string | null; replyToId?: number | null }) {
+  async createRoomMessage(data: { roomId: string; senderId: number; content?: string; messageType?: "text" | "gif" | "image"; gifUrl?: string | null; replyToId?: number | null }) {
     const [sender] = await db.select({ nickname: users.nickname }).from(users).where(eq(users.id, data.senderId));
     const nickname = sender?.nickname ?? "Unknown";
 
@@ -454,25 +454,40 @@ export const repository = {
     return Boolean(row);
   },
 
-  async createDirectMessage(senderId: number, receiverId: number, content?: string, messageType: "text" | "gif" = "text", gifUrl?: string | null) {
+  async createDirectMessage(senderId: number, receiverId: number, content?: string, messageType: "text" | "gif" | "image" = "text", gifUrl?: string | null, replyToId?: number | null) {
     const [sender] = await db.select({ nickname: users.nickname }).from(users).where(eq(users.id, senderId));
     const nickname = sender?.nickname ?? "Unknown";
 
     const [msg] = await db
       .insert(messages)
-      .values({ senderId, receiverId, senderNickname: nickname, content: content || "", messageType, gifUrl: gifUrl || null, status: "sent" })
+      .values({ senderId, receiverId, senderNickname: nickname, content: content || "", messageType, gifUrl: gifUrl || null, replyToId: replyToId || null, status: "sent" })
       .returning();
 
-    return msg;
+    let replyToContent: string | null = null;
+    let replyToNickname: string | null = null;
+    if (msg.replyToId) {
+      const [replied] = await db
+        .select({ content: messages.content, senderNickname: messages.senderNickname })
+        .from(messages)
+        .where(eq(messages.id, msg.replyToId));
+      if (replied) {
+        replyToContent = replied.content;
+        replyToNickname = replied.senderNickname;
+      }
+    }
+
+    return { ...msg, replyToContent, replyToNickname };
   },
 
   async listDirectMessages(userId: number, friendId: number) {
     return db.execute(sql`
       select m.id, m.room_id as "roomId", m.sender_id as "senderId", m.sender_nickname as "senderNickname", m.receiver_id as "receiverId",
              m.content, m.message_type as "messageType", m.gif_url as "gifUrl", m.status, m.created_at as "createdAt",
-             m.deleted,
+             m.deleted, m.reply_to_id as "replyToId",
+             rm.content as "replyToContent", rm.sender_nickname as "replyToNickname",
              coalesce(r.reactions, '[]'::json) as "reactions"
       from messages m
+      left join messages rm on rm.id = m.reply_to_id
       left join lateral (
         select json_agg(json_build_object('reaction', mr.reaction, 'count', mr.count)) as reactions
         from (

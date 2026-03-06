@@ -44,6 +44,9 @@
     --chat-bg: 60 20% 90%;
     --bubble-in: 0 0% 100%;
     --bubble-out: 124 64% 86%; /* Light green for outgoing */
+    /* Text colors calibrated against the bubble backgrounds */
+    --bubble-out-text: 140 35% 22%; /* dark forest for light-green bubble */
+    --bubble-in-text: 210 20% 38%; /* dark steel for white bubble */
 
     /* Sidebar gradient */
     --sidebar-from: 220 14% 12%;
@@ -84,6 +87,9 @@
     --chat-bg: 215 28% 8%; /* Darker background for chat area */
     --bubble-in: 215 25% 15%; /* Dark gray for incoming */
     --bubble-out: 160 84% 20%; /* Dark green for outgoing */
+    /* Text colors calibrated against the bubble backgrounds */
+    --bubble-out-text: 154 45% 83%; /* light mint for dark-green bubble */
+    --bubble-in-text: 215 20% 72%; /* light slate for dark-card bubble */
 
     /* Sidebar gradient */
     --sidebar-from: 215 28% 8%;
@@ -109,6 +115,9 @@
     --chat-bg: 197 50% 90%;
     --bubble-in: 0 0% 100%;
     --bubble-out: 190 70% 82%;
+    /* Text colors calibrated against the bubble backgrounds */
+    --bubble-out-text: 200 45% 22%; /* dark ocean for light-cyan bubble */
+    --bubble-in-text: 210 28% 35%; /* dark slate for white bubble */
     --sidebar-from: 200 100% 13%;
     --sidebar-to: 199 80% 20%;
   }
@@ -132,6 +141,9 @@
     --chat-bg: 228 34% 8%;
     --bubble-in: 226 24% 16%;
     --bubble-out: 171 70% 20%;
+    /* Text colors calibrated against the bubble backgrounds */
+    --bubble-out-text: 174 55% 82%; /* light teal for dark-teal bubble */
+    --bubble-in-text: 216 20% 74%; /* light slate for dark-slate bubble */
     --sidebar-from: 226 70% 6%;
     --sidebar-to: 228 38% 11%;
   }
@@ -159,6 +171,9 @@
     --chat-bg: 356 100% 95%;
     --bubble-in: 0 0% 100%;         /* white for incoming */
     --bubble-out: 347 77% 55%;      /* rose-500 for outgoing */
+    /* Text colors calibrated against the bubble backgrounds */
+    --bubble-out-text: 0 0% 100%;   /* WHITE — full contrast on rose-500 bubble */
+    --bubble-in-text: 347 40% 32%;  /* deep rose for white bubble */
     --sidebar-from: 349 71% 18%;     /* deep rose/wine */
     --sidebar-to: 347 65% 27%;
   }
@@ -182,6 +197,24 @@
 .sidebar-themed {
   background: linear-gradient(to bottom, hsl(var(--sidebar-from)), hsl(var(--sidebar-to)));
 }
+
+/* Bubble-aware text utilities — contrast is tuned per theme via CSS vars */
+.bubble-name {
+  font-size: 0.75rem;
+  line-height: 1rem;
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+.bubble-name-out  { color: hsl(var(--bubble-out-text)); }
+.bubble-name-in   { color: hsl(var(--bubble-in-text)); }
+
+/* Secondary text (timestamp / reply preview) at ~65% opacity of the bubble text */
+.bubble-meta-out  { color: hsl(var(--bubble-out-text) / 0.65); }
+.bubble-meta-in   { color: hsl(var(--bubble-in-text)  / 0.65); }
+
+/* Reply preview quoted text */
+.bubble-reply-text-out { color: hsl(var(--bubble-out-text) / 0.78); }
+.bubble-reply-text-in  { color: hsl(var(--bubble-in-text)  / 0.78); }
 
 /* Chat Background Pattern */
 .bg-chat-pattern {

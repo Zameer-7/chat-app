@@ -9,6 +9,9 @@ export const api = {
     search: "/api/users/search",
     checkUsername: "/api/users/check-username",
   },
+  messages: {
+    uploadImage: "/api/messages/upload-image",
+  },
   friends: {
     list: "/api/friends",
   },

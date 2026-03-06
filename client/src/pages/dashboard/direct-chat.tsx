@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useRoute } from "wouter";
+import { useRoute, useLocation } from "wouter";
 import EmojiPicker from "emoji-picker-react";
+import { ArrowLeft, Image, Reply, X } from "lucide-react";
 import { wsPaths } from "@shared/routes";
 import { useAuth } from "@/hooks/use-auth";
 import { useSocket } from "@/hooks/use-socket";
 import { ChatWindow } from "@/components/chat/chat-window";
 import { getDirectMessages, getFriends, type ChatMessage } from "@/services/chat-api";
+import { uploadImage } from "@/services/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -14,11 +16,15 @@ export default function DirectChatPage() {
   const [, params] = useRoute("/dm/:friendId");
   const friendId = Number(params?.friendId || 0);
   const { user } = useAuth();
+  const [, setLocation] = useLocation();
   const [text, setText] = useState("");
   const [showEmoji, setShowEmoji] = useState(false);
   const [showGif, setShowGif] = useState(false);
   const [gifQuery, setGifQuery] = useState("hello");
   const [gifs, setGifs] = useState<string[]>([]);
+  const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
+  const [imageUploading, setImageUploading] = useState(false);
+  const imageInputRef = useRef<HTMLInputElement>(null);
 
   const { data: friends = [] } = useQuery({ queryKey: ["friends"], queryFn: getFriends });
   const friend = friends.find((f) => f.id === friendId);
@@ -39,6 +45,7 @@ export default function DirectChatPage() {
 
   useEffect(() => {
     setLiveMessages([]);
+    setReplyTo(null);
   }, [friendId]);
 
   useEffect(() => {
@@ -59,6 +66,16 @@ export default function DirectChatPage() {
       setLiveMessages((prev) =>
         prev.map((m) => (m.id === Number(lastEvent.messageId) ? { ...m, reactions: lastEvent.counts?.map((c: any) => ({ reaction: c.reaction, count: c.count })) || [] } : m)),
       );
+    }
+    if (lastEvent?.type === "message_deleted") {
+      const msgId = Number(lastEvent.messageId);
+      if (lastEvent.scope === "everyone") {
+        setLiveMessages((prev) =>
+          prev.map((m) => (m.id === msgId ? { ...m, deleted: true, content: "This message was deleted" } : m)),
+        );
+      } else if (lastEvent.scope === "me" && lastEvent.userId === user?.id) {
+        setLiveMessages((prev) => prev.filter((m) => m.id !== msgId));
+      }
     }
   }, [lastEvent]);
 
@@ -93,6 +110,9 @@ export default function DirectChatPage() {
         content: payload.content || "",
         messageType: payload.messageType || "text",
         gifUrl: payload.gifUrl || null,
+        replyToId: payload.replyToId || null,
+        replyToContent: payload.replyToContent || null,
+        replyToNickname: payload.replyToNickname || null,
         status: "sent",
         createdAt: new Date().toISOString(),
         reactions: [],
@@ -105,9 +125,32 @@ export default function DirectChatPage() {
   const handleSend = (e: React.FormEvent) => {
     e.preventDefault();
     if (!canSend) return;
-    const clientMessageId = optimisticInsert({ content: text.trim() });
-    send({ type: "direct_message", content: text.trim(), clientMessageId });
+    const clientMessageId = optimisticInsert({
+      content: text.trim(),
+      replyToId: replyTo?.id,
+      replyToContent: replyTo?.content,
+      replyToNickname: replyTo?.senderNickname,
+    });
+    send({ type: "direct_message", content: text.trim(), clientMessageId, replyToId: replyTo?.id ?? null });
     setText("");
+    setReplyTo(null);
+  };
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    // Reset input so same file can be re-selected
+    e.target.value = "";
+    setImageUploading(true);
+    try {
+      const { url } = await uploadImage(file);
+      const clientMessageId = optimisticInsert({ messageType: "image", gifUrl: url, content: "" });
+      send({ type: "direct_message", gifUrl: url, messageType: "image", clientMessageId });
+    } catch (err) {
+      console.error("Image upload failed:", (err as Error).message);
+    } finally {
+      setImageUploading(false);
+    }
   };
 
   const fetchGifs = async (query: string) => {
@@ -118,8 +161,19 @@ export default function DirectChatPage() {
 
   return (
     <div className="space-y-4">
+      {/* Header with back button */}
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-black">Chat with {friend?.nickname || `User ${friendId}`}</h2>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setLocation("/friends")}
+            className="text-muted-foreground hover:text-foreground transition-colors shrink-0"
+            title="Back"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </button>
+          <h2 className="text-2xl font-black">Chat with {friend?.nickname || `User ${friendId}`}</h2>
+        </div>
         <p className="text-sm text-muted-foreground">{friend?.isOnline ? "Online" : "Offline"}</p>
       </div>
 
@@ -127,6 +181,8 @@ export default function DirectChatPage() {
         messages={messages}
         currentUserId={user!.id}
         onReact={(messageId, reaction) => send({ type: "reaction_add", messageId, reaction })}
+        onDelete={(messageId, scope) => send({ type: "message_delete", messageId, scope })}
+        onReply={(message) => setReplyTo(message)}
       />
       <p className="text-xs text-muted-foreground px-1">Typing indicator area</p>
 
@@ -161,7 +217,39 @@ export default function DirectChatPage() {
         </div>
       )}
 
+      {/* Reply preview */}
+      {replyTo && (
+        <div className="flex items-center gap-2 rounded-xl border bg-muted/50 px-3 py-2 text-sm">
+          <Reply className="h-4 w-4 text-primary shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-semibold text-primary">{replyTo.senderNickname}</p>
+            <p className="text-xs text-muted-foreground truncate">{replyTo.content || (replyTo.gifUrl ? "Image" : "...")}</p>
+          </div>
+          <button type="button" onClick={() => setReplyTo(null)} className="text-muted-foreground hover:text-foreground shrink-0">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Hidden image file input */}
+      <input
+        ref={imageInputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/gif"
+        className="hidden"
+        onChange={handleImageUpload}
+      />
+
       <form className="flex gap-2" onSubmit={handleSend}>
+        <Button
+          type="button"
+          variant="secondary"
+          disabled={imageUploading}
+          onClick={() => imageInputRef.current?.click()}
+          title="Send image"
+        >
+          <Image className="h-4 w-4" />
+        </Button>
         <Button type="button" variant="secondary" onClick={() => setShowGif((s) => !s)}>GIF</Button>
         <Button type="button" variant="secondary" onClick={() => setShowEmoji((s) => !s)}>😊</Button>
         <Input value={text} onChange={(e) => setText(e.target.value)} placeholder="Type a direct message" />

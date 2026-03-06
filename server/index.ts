@@ -21,6 +21,11 @@ app.use(
 );
 
 app.use(express.urlencoded({ extended: false }));
+
+// Serve uploaded images (ephemeral on Render — use object storage for persistence)
+import pathModule from "path";
+app.use("/uploads", express.static(pathModule.resolve("uploads")));
+
 app.use((req, res, next) => {
   const allowedOrigin = process.env.CORS_ORIGIN || "*";
   res.header("Access-Control-Allow-Origin", allowedOrigin);

@@ -89,6 +89,32 @@ export function signup(payload: { username: string; email: string; password: str
   });
 }
 
+/** Upload an image for use in chat. Returns the server URL for the uploaded file. */
+export async function uploadImage(file: File): Promise<{ url: string }> {
+  const token = getToken();
+  const formData = new FormData();
+  formData.append("image", file);
+
+  const res = await fetch(withApiBase("/api/messages/upload-image"), {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: formData,
+  });
+
+  if (!res.ok) {
+    let message = "Upload failed";
+    try {
+      const body = await res.json();
+      message = body.message || message;
+    } catch {
+      // ignore
+    }
+    throw new Error(message);
+  }
+
+  return res.json();
+}
+
 export function checkUsernameAvailability(username: string) {
   return authFetch<{ available: boolean }>(
     `${api.users.checkUsername}?username=${encodeURIComponent(username)}`,

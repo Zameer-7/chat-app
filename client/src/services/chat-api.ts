@@ -8,7 +8,7 @@ export type ChatMessage = {
   receiverId: number | null;
   status: "sent" | "delivered" | "seen";
   content: string;
-  messageType?: "text" | "gif";
+  messageType?: "text" | "gif" | "image";
   gifUrl?: string | null;
   deleted?: boolean;
   createdAt: string;

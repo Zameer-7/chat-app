@@ -153,11 +153,12 @@ export function registerWebSocket(server: Server) {
 
           const clientMessageId = body.clientMessageId ? String(body.clientMessageId) : undefined;
           const replyToId = body.replyToId ? Number(body.replyToId) : null;
+          const effectiveRoomMsgType = body.messageType === "image" ? "image" : body.gifUrl ? "gif" : "text";
           const msg = await repository.createRoomMessage({
             roomId,
             senderId: user.userId,
             content: body.content ? String(body.content) : "",
-            messageType: body.gifUrl ? "gif" : "text",
+            messageType: effectiveRoomMsgType,
             gifUrl: body.gifUrl ? String(body.gifUrl) : null,
             replyToId: replyToId && Number.isInteger(replyToId) ? replyToId : null,
           });
@@ -186,12 +187,15 @@ export function registerWebSocket(server: Server) {
             return;
           }
 
+          const dmReplyToId = body.replyToId ? Number(body.replyToId) : null;
+          const effectiveDmMsgType = body.messageType === "image" ? "image" : body.gifUrl ? "gif" : "text";
           const msg = await repository.createDirectMessage(
             user.userId,
             friendId,
             body.content ? String(body.content) : "",
-            body.gifUrl ? "gif" : "text",
+            effectiveDmMsgType,
             body.gifUrl ? String(body.gifUrl) : null,
+            dmReplyToId && Number.isInteger(dmReplyToId) ? dmReplyToId : null,
           );
           safeSend(ws, { type: "message_sent", messageId: msg.id, status: "sent", senderId: user.userId, receiverId: friendId, clientMessageId });
 

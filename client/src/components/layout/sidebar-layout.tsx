@@ -3,6 +3,7 @@ import { Home, Users, Search, Inbox, MessageCircle, LogOut, Settings, CircleUser
 import { useAuth } from "@/hooks/use-auth";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@shared/routes";
+import { authFetch } from "@/services/api";
 import { NovaLogo } from "./nova-logo";
 
 const mainNav = [
@@ -37,11 +38,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
 
   const { data: frCount } = useQuery<{ count: number }>({
     queryKey: ["friend-requests-count"],
-    queryFn: async () => {
-      const res = await fetch(api.friendRequests.count, { credentials: "include" });
-      if (!res.ok) throw new Error("Failed to fetch");
-      return res.json();
-    },
+    queryFn: () => authFetch<{ count: number }>(api.friendRequests.count),
     refetchInterval: 30_000,
   });
 

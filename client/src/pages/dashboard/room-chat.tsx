@@ -2,11 +2,12 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation, useRoute } from "wouter";
 import EmojiPicker from "emoji-picker-react";
-import { ArrowLeft, Check, Crown, Info, Link2, Pencil, Reply, Users, X } from "lucide-react";
+import { ArrowLeft, Check, Crown, Image, Info, Link2, Pencil, Reply, Users, X } from "lucide-react";
 import { wsPaths } from "@shared/routes";
 import { useAuth } from "@/hooks/use-auth";
 import { useSocket } from "@/hooks/use-socket";
 import { ChatWindow } from "@/components/chat/chat-window";
+import { uploadImage } from "@/services/api";
 import {
   deleteRoom,
   getJoinedRooms,
@@ -46,6 +47,8 @@ export default function RoomChatPage() {
   const tempId = useRef(-1);
   const [liveMessages, setLiveMessages] = useState<ChatMessage[]>([]);
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
+  const [imageUploading, setImageUploading] = useState(false);
+  const imageInputRef = useRef<HTMLInputElement>(null);
 
   const PAGE_SIZE = 30;
 
@@ -244,6 +247,22 @@ export default function RoomChatPage() {
     send({ type: "room_message", content: text.trim(), clientMessageId, replyToId: replyTo?.id || null });
     setText("");
     setReplyTo(null);
+  };
+
+  const handleRoomImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    setImageUploading(true);
+    try {
+      const { url } = await uploadImage(file);
+      const clientMessageId = optimisticInsert({ messageType: "image", gifUrl: url, content: "" });
+      send({ type: "room_message", gifUrl: url, messageType: "image", clientMessageId });
+    } catch (err) {
+      console.error("Image upload failed:", (err as Error).message);
+    } finally {
+      setImageUploading(false);
+    }
   };
 
   const fetchGifs = async (query: string) => {
@@ -538,6 +557,23 @@ export default function RoomChatPage() {
 
       {/* Send form */}
       <form className="flex items-center gap-2 p-0" onSubmit={handleSend}>
+        {/* Hidden image file input */}
+        <input
+          ref={imageInputRef}
+          type="file"
+          accept="image/png,image/jpeg,image/gif"
+          className="hidden"
+          onChange={handleRoomImageUpload}
+        />
+        <Button
+          type="button"
+          variant="secondary"
+          disabled={left || imageUploading}
+          onClick={() => imageInputRef.current?.click()}
+          title="Send image"
+        >
+          <Image className="h-4 w-4" />
+        </Button>
         <Button type="button" variant="secondary" onClick={() => setShowGif((s) => !s)}>GIF</Button>
         <Button type="button" variant="secondary" onClick={() => setShowEmoji((s) => !s)}>😊</Button>
         <Input

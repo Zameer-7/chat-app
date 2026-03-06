@@ -100,7 +100,7 @@ export default function SignupPage() {
           <NovaLogo />
           <div>
             <h1 className="text-2xl font-black">Create account</h1>
-            <p className="text-sm text-muted-foreground">Join Nova Chat in seconds</p>
+            <p className="text-sm text-muted-foreground">Join Vibely in seconds</p>
           </div>
 
           {error && <p className="text-sm text-destructive">{error}</p>}
