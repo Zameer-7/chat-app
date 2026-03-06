@@ -1,72 +1,50 @@
-import { z } from 'zod';
-import { insertRoomSchema, insertMessageSchema, rooms, messages } from './schema';
-
-export const errorSchemas = {
-  validation: z.object({
-    message: z.string(),
-    field: z.string().optional(),
-  }),
-  notFound: z.object({
-    message: z.string(),
-  }),
-  internal: z.object({
-    message: z.string(),
-  }),
-};
-
 export const api = {
+  auth: {
+    signup: "/api/auth/signup",
+    login: "/api/auth/login",
+    me: "/api/auth/me",
+    logout: "/api/auth/logout",
+  },
+  users: {
+    search: "/api/users/search",
+  },
+  friends: {
+    list: "/api/friends",
+  },
+  friendRequests: {
+    list: "/api/friend-requests",
+    count: "/api/friend-requests/count",
+    create: "/api/friend-requests",
+    update: (id: number) => `/api/friend-requests/${id}`,
+  },
   rooms: {
-    create: {
-      method: 'POST' as const,
-      path: '/api/rooms' as const,
-      input: z.object({ id: z.string().optional() }).optional(),
-      responses: {
-        201: z.custom<typeof rooms.$inferSelect>(),
-        400: errorSchemas.validation,
-      },
-    },
-    get: {
-      method: 'GET' as const,
-      path: '/api/rooms/:id' as const,
-      responses: {
-        200: z.custom<typeof rooms.$inferSelect>(),
-        404: errorSchemas.notFound,
-      },
-    },
-    messages: {
-      list: {
-        method: 'GET' as const,
-        path: '/api/rooms/:id/messages' as const,
-        responses: {
-          200: z.array(z.custom<typeof messages.$inferSelect>()),
-          404: errorSchemas.notFound,
-        },
-      },
-    }
+    create: "/api/rooms",
+    joined: "/api/rooms/joined",
+    join: (id: string) => `/api/rooms/${id}/join`,
+    leave: (id: string) => `/api/rooms/${id}/leave`,
+    delete: (id: string) => `/api/rooms/${id}`,
+    get: (id: string) => `/api/rooms/${id}`,
+    rename: (id: string) => `/api/rooms/${id}`,
+    messages: (id: string) => `/api/rooms/${id}/messages`,
+    members: (id: string) => `/api/rooms/${id}/members`,
+    stats: (id: string) => `/api/rooms/${id}/stats`,
   },
+  direct: {
+    messages: (friendId: number) => `/api/direct/${friendId}/messages`,
+  },
+  profile: {
+    me: "/api/profile/me",
+    update: "/api/profile/update",
+  },
+  settings: {
+    profile: "/api/settings/profile",
+    updateProfile: "/api/settings/update-profile",
+    updateTheme: "/api/settings/update-theme",
+  },
+} as const;
+
+export const wsPaths = {
+  room: (roomId: string, token: string) => `/ws/room/${roomId}?token=${encodeURIComponent(token)}`,
+  direct: (friendId: number, token: string) => `/ws/direct/${friendId}?token=${encodeURIComponent(token)}`,
+  user: (token: string) => `/ws/user?token=${encodeURIComponent(token)}`,
 };
-
-export const ws = {
-  send: {
-    message: z.object({ content: z.string() }),
-  },
-  receive: {
-    message: z.custom<typeof messages.$inferSelect>(),
-    system: z.object({ content: z.string(), type: z.string() }),
-  },
-};
-
-export function buildUrl(path: string, params?: Record<string, string | number>): string {
-  let url = path;
-  if (params) {
-    Object.entries(params).forEach(([key, value]) => {
-      if (url.includes(`:${key}`)) {
-        url = url.replace(`:${key}`, String(value));
-      }
-    });
-  }
-  return url;
-}
-
-export type RoomResponse = z.infer<typeof api.rooms.create.responses[201]>;
-export type MessageResponse = z.infer<typeof api.rooms.messages.list.responses[200]>[0];

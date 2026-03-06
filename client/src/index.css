@@ -44,6 +44,10 @@
     --chat-bg: 60 20% 90%;
     --bubble-in: 0 0% 100%;
     --bubble-out: 124 64% 86%; /* Light green for outgoing */
+
+    /* Sidebar gradient */
+    --sidebar-from: 220 14% 12%;
+    --sidebar-to: 215 14% 18%;
   }
 
   .dark {
@@ -80,6 +84,83 @@
     --chat-bg: 215 28% 8%; /* Darker background for chat area */
     --bubble-in: 215 25% 15%; /* Dark gray for incoming */
     --bubble-out: 160 84% 20%; /* Dark green for outgoing */
+
+    /* Sidebar gradient */
+    --sidebar-from: 215 28% 8%;
+    --sidebar-to: 215 25% 13%;
+  }
+
+  :root[data-theme="ocean"] {
+    --background: 200 58% 94%;
+    --foreground: 210 28% 18%;
+    --card: 0 0% 100%;
+    --card-foreground: 210 28% 18%;
+    --primary: 193 84% 42%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 198 46% 90%;
+    --secondary-foreground: 210 28% 18%;
+    --muted: 198 36% 88%;
+    --muted-foreground: 212 16% 38%;
+    --accent: 176 66% 38%;
+    --accent-foreground: 0 0% 100%;
+    --border: 198 34% 82%;
+    --input: 198 34% 82%;
+    --ring: 193 84% 42%;
+    --chat-bg: 197 50% 90%;
+    --bubble-in: 0 0% 100%;
+    --bubble-out: 190 70% 82%;
+    --sidebar-from: 200 100% 13%;
+    --sidebar-to: 199 80% 20%;
+  }
+
+  :root[data-theme="midnight"] {
+    --background: 228 31% 9%;
+    --foreground: 210 40% 96%;
+    --card: 226 26% 13%;
+    --card-foreground: 210 40% 96%;
+    --primary: 174 74% 43%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 226 20% 18%;
+    --secondary-foreground: 210 40% 96%;
+    --muted: 226 20% 22%;
+    --muted-foreground: 216 18% 68%;
+    --accent: 184 72% 45%;
+    --accent-foreground: 0 0% 100%;
+    --border: 226 18% 24%;
+    --input: 226 18% 24%;
+    --ring: 174 74% 43%;
+    --chat-bg: 228 34% 8%;
+    --bubble-in: 226 24% 16%;
+    --bubble-out: 171 70% 20%;
+    --sidebar-from: 226 70% 6%;
+    --sidebar-to: 228 38% 11%;
+  }
+
+  :root[data-theme="love"] {
+    --background: 356 100% 97%; /* rose-50 #FFF1F2 */
+    --foreground: 222 47% 11%;  /* near black */
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+    --primary: 347 77% 50%;     /* rose-600 #E11D48 */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 356 100% 94%;  /* rose-100 */
+    --secondary-foreground: 347 77% 40%;
+    --muted: 356 60% 92%;
+    --muted-foreground: 347 30% 50%;
+    --accent: 351 83% 61%;      /* rose-400 #FB7185 */
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 356 60% 88%;
+    --input: 356 60% 88%;
+    --ring: 347 77% 50%;
+    --chat-bg: 356 100% 95%;
+    --bubble-in: 0 0% 100%;         /* white for incoming */
+    --bubble-out: 347 77% 55%;      /* rose-500 for outgoing */
+    --sidebar-from: 349 71% 18%;     /* deep rose/wine */
+    --sidebar-to: 347 65% 27%;
   }
 }
 
@@ -95,6 +176,11 @@
     font-family: var(--font-display);
     @apply font-bold tracking-tight;
   }
+}
+
+/* Themed Sidebar */
+.sidebar-themed {
+  background: linear-gradient(to bottom, hsl(var(--sidebar-from)), hsl(var(--sidebar-to)));
 }
 
 /* Chat Background Pattern */

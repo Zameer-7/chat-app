@@ -1,33 +1,127 @@
-import { pgTable, text, serial, timestamp, varchar, boolean } from "drizzle-orm/pg-core";
+import { boolean, integer, pgTable, serial, text, timestamp, varchar } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
+export const users = pgTable("users", {
+  id: serial("id").primaryKey(),
+  email: text("email").notNull().unique(),
+  passwordHash: text("password_hash").notNull(),
+  username: text("username").notNull().unique(),
+  nickname: text("nickname").notNull().unique(),
+  nicknameLastChanged: timestamp("nickname_last_changed"),
+  usernameLastChanged: timestamp("username_last_changed"),
+  chatTheme: text("chat_theme").notNull().default("light"),
+  avatarUrl: text("avatar_url"),
+  bio: text("bio"),
+  isOnline: boolean("is_online").notNull().default(false),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  lastSeen: timestamp("last_seen").notNull().defaultNow(),
+});
+
 export const rooms = pgTable("rooms", {
   id: varchar("id").primaryKey(),
-  createdAt: timestamp("created_at").defaultNow(),
+  roomName: text("room_name"),
+  createdBy: integer("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const friendRequests = pgTable("friend_requests", {
+  id: serial("id").primaryKey(),
+  senderId: integer("sender_id").notNull().references(() => users.id),
+  receiverId: integer("receiver_id").notNull().references(() => users.id),
+  status: text("status").notNull().default("pending"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const userRooms = pgTable("user_rooms", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id),
+  roomId: varchar("room_id").notNull().references(() => rooms.id),
+  joinedAt: timestamp("joined_at").notNull().defaultNow(),
+  leftAt: timestamp("left_at"),
 });
 
 export const messages = pgTable("messages", {
   id: serial("id").primaryKey(),
-  roomId: varchar("room_id").notNull(),
-  username: text("username").notNull(),
+  roomId: varchar("room_id"),
+  senderId: integer("sender_id").notNull().references(() => users.id),
+  senderNickname: text("sender_nickname").notNull().default("Unknown"),
+  receiverId: integer("receiver_id").references(() => users.id),
   content: text("content").notNull(),
-  createdAt: timestamp("created_at").defaultNow(),
+  messageType: text("message_type").notNull().default("text"),
+  gifUrl: text("gif_url"),
+  replyToId: integer("reply_to_id"),
+  status: text("status").notNull().default("sent"),
+  deleted: boolean("deleted").notNull().default(false),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
-export const users = pgTable("users", {
-  username: text("username").primaryKey(),
-  isOnline: boolean("is_online").default(false),
-  lastSeen: timestamp("last_seen").defaultNow(),
+export const messageHidden = pgTable("message_hidden", {
+  id: serial("id").primaryKey(),
+  messageId: integer("message_id").notNull().references(() => messages.id),
+  userId: integer("user_id").notNull().references(() => users.id),
+  hiddenAt: timestamp("hidden_at").notNull().defaultNow(),
 });
 
-export const insertRoomSchema = createInsertSchema(rooms).pick({ id: true });
-export const insertMessageSchema = createInsertSchema(messages).pick({ roomId: true, username: true, content: true });
-export const insertUserSchema = createInsertSchema(users).pick({ username: true, isOnline: true, lastSeen: true });
+export const messageReactions = pgTable("message_reactions", {
+  id: serial("id").primaryKey(),
+  messageId: integer("message_id").notNull().references(() => messages.id),
+  userId: integer("user_id").notNull().references(() => users.id),
+  reaction: text("reaction").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
 
-export type Room = typeof rooms.$inferSelect;
-export type Message = typeof messages.$inferSelect;
+export const insertUserSchema = createInsertSchema(users).pick({
+  email: true,
+  passwordHash: true,
+  nickname: true,
+});
+
+export const signupSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(6),
+  nickname: z.string().min(2).max(25),
+});
+
+export const loginSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(6),
+});
+
+export const sendFriendRequestSchema = z.object({
+  receiverId: z.number().int().positive(),
+});
+
+export const updateFriendRequestSchema = z.object({
+  status: z.enum(["accepted", "rejected"]),
+});
+
+export const createRoomMessageSchema = z.object({
+  roomId: z.string().min(1),
+  content: z.string().min(1),
+});
+
+export const createDirectMessageSchema = z.object({
+  receiverId: z.number().int().positive(),
+  content: z.string().min(1),
+});
+
+export const updateProfileSchema = z.object({
+  nickname: z.string().min(2).max(25).optional(),
+  username: z.string().min(3).max(20).regex(/^[a-zA-Z0-9_]+$/, "Username can only contain letters, numbers, and underscore").optional(),
+});
+
+export const updateThemeSchema = z.object({
+  chatTheme: z.enum(["light", "dark", "ocean", "midnight", "love"]),
+});
+
+export const updateProfileMetaSchema = z.object({
+  avatarUrl: z.string().max(200000).optional(),
+  bio: z.string().max(280).optional(),
+});
+
 export type User = typeof users.$inferSelect;
-export type InsertRoom = z.infer<typeof insertRoomSchema>;
-export type InsertMessage = z.infer<typeof insertMessageSchema>;
 export type InsertUser = z.infer<typeof insertUserSchema>;
+export type Room = typeof rooms.$inferSelect;
+export type FriendRequest = typeof friendRequests.$inferSelect;
+export type Message = typeof messages.$inferSelect;

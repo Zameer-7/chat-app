@@ -1,32 +1,164 @@
-import { Switch, Route } from "wouter";
-import { queryClient } from "./lib/queryClient";
+import { useCallback, useEffect } from "react";
+import { Route, Switch, useLocation } from "wouter";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { Toaster } from "@/components/ui/toaster";
+import { queryClient } from "./lib/queryClient";
+import { useQueryClient } from "@tanstack/react-query";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { Toaster } from "@/components/ui/toaster";
+import { AuthProvider, useAuth } from "@/hooks/use-auth";
+import { SidebarLayout } from "@/components/layout/sidebar-layout";
+import { useSocket } from "@/hooks/use-socket";
+import { wsPaths } from "@shared/routes";
 
-import Home from "./pages/home";
-import Chat from "./pages/chat";
-import NotFound from "./pages/not-found";
+import LoginPage from "@/pages/auth/login";
+import SignupPage from "@/pages/auth/signup";
+import DashboardPage from "@/pages/dashboard/dashboard";
+import RoomsPage from "@/pages/dashboard/rooms";
+import FriendsPage from "@/pages/dashboard/friends";
+import FriendRequestsPage from "@/pages/dashboard/friend-requests";
+import SearchUsersPage from "@/pages/dashboard/search-users";
+import SettingsPage from "@/pages/dashboard/settings";
+import ProfilePage from "@/pages/dashboard/profile";
+import RoomChatPage from "@/pages/dashboard/room-chat";
+import DirectChatPage from "@/pages/dashboard/direct-chat";
+import NotFound from "@/pages/not-found";
+
+function GlobalEvents() {
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const pathFactory = useCallback((token: string) => wsPaths.user(token), []);
+  const { lastEvent } = useSocket(pathFactory);
+
+  useEffect(() => {
+    if (!user || !lastEvent) return;
+    if (lastEvent.type === "friend_request_received") {
+      queryClient.invalidateQueries({ queryKey: ["friend-requests"] });
+      queryClient.invalidateQueries({ queryKey: ["friend-requests-count"] });
+    }
+  }, [lastEvent, user, queryClient]);
+
+  return null;
+}
+
+function AuthGate({ children }: { children: React.ReactNode }) {
+  const { user, loading } = useAuth();
+  const [, setLocation] = useLocation();
+
+  useEffect(() => {
+    if (!loading && !user) {
+      setLocation("/login");
+    }
+  }, [loading, user, setLocation]);
+
+  if (loading || !user) {
+    return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
+  }
+
+  return <SidebarLayout>{children}</SidebarLayout>;
+}
+
+function PublicOnly({ children }: { children: React.ReactNode }) {
+  const { user, loading } = useAuth();
+  const [, setLocation] = useLocation();
+
+  useEffect(() => {
+    if (!loading && user) {
+      setLocation("/dashboard");
+    }
+  }, [loading, user, setLocation]);
+
+  if (loading) {
+    return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
+  }
+
+  if (user) return null;
+
+  return <>{children}</>;
+}
 
 function Router() {
   return (
     <Switch>
-      <Route path="/" component={Home} />
-      <Route path="/chat/:id" component={Chat} />
-      <Route component={NotFound} />
+      <Route path="/login">
+        <PublicOnly>
+          <LoginPage />
+        </PublicOnly>
+      </Route>
+      <Route path="/signup">
+        <PublicOnly>
+          <SignupPage />
+        </PublicOnly>
+      </Route>
+
+      <Route path="/dashboard">
+        <AuthGate>
+          <DashboardPage />
+        </AuthGate>
+      </Route>
+      <Route path="/rooms">
+        <AuthGate>
+          <RoomsPage />
+        </AuthGate>
+      </Route>
+      <Route path="/rooms/:id">
+        <AuthGate>
+          <RoomChatPage />
+        </AuthGate>
+      </Route>
+      <Route path="/friends">
+        <AuthGate>
+          <FriendsPage />
+        </AuthGate>
+      </Route>
+      <Route path="/friend-requests">
+        <AuthGate>
+          <FriendRequestsPage />
+        </AuthGate>
+      </Route>
+      <Route path="/search">
+        <AuthGate>
+          <SearchUsersPage />
+        </AuthGate>
+      </Route>
+      <Route path="/profile">
+        <AuthGate>
+          <ProfilePage />
+        </AuthGate>
+      </Route>
+      <Route path="/settings">
+        <AuthGate>
+          <SettingsPage />
+        </AuthGate>
+      </Route>
+      <Route path="/dm/:friendId">
+        <AuthGate>
+          <DirectChatPage />
+        </AuthGate>
+      </Route>
+
+      <Route path="/">
+        <PublicOnly>
+          <LoginPage />
+        </PublicOnly>
+      </Route>
+
+      <Route>
+        <NotFound />
+      </Route>
     </Switch>
   );
 }
 
-function App() {
+export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <Toaster />
-        <Router />
+        <AuthProvider>
+          <GlobalEvents />
+          <Toaster />
+          <Router />
+        </AuthProvider>
       </TooltipProvider>
     </QueryClientProvider>
   );
 }
-
-export default App;

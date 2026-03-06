@@ -11,4 +11,11 @@ if (!process.env.DATABASE_URL) {
 }
 
 export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+
+pool.on("connect", (client) => {
+  client.query("SET client_encoding TO 'UTF8'").catch((error) => {
+    console.error("Failed to apply UTF8 client encoding", error);
+  });
+});
+
 export const db = drizzle(pool, { schema });
