@@ -4,6 +4,7 @@ import { authFetch, type SafeUser } from "./api";
 export type ProfileResponse = SafeUser & {
   friendCount: number;
   roomCount: number;
+  messageCount: number;
 };
 
 export function getMyProfile() {

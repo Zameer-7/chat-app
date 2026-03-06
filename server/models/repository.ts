@@ -168,13 +168,21 @@ export const repository = {
       where sender_id = ${userId} and room_id is not null
     `);
 
+    const msgResult = await db.execute(sql`
+      select count(*)::int as "messageCount"
+      from messages
+      where sender_id = ${userId} and deleted = false
+    `);
+
     const friendAgg = friendResult.rows[0] as { friendCount: number } | undefined;
     const roomAgg = roomResult.rows[0] as { roomCount: number } | undefined;
+    const msgAgg = msgResult.rows[0] as { messageCount: number } | undefined;
 
     return {
       ...toSafeUser(user),
       friendCount: friendAgg?.friendCount ?? 0,
       roomCount: roomAgg?.roomCount ?? 0,
+      messageCount: msgAgg?.messageCount ?? 0,
     };
   },
 
