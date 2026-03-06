@@ -4,31 +4,6 @@ import { loginSchema, signupSchema } from "@shared/schema";
 import { repository } from "../models/repository";
 import { authMiddleware, type AuthedRequest, signToken } from "../middleware/auth";
 
-function slugify(value: string) {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9_]+/g, "_")
-    .replace(/^_+|_+$/g, "")
-    .slice(0, 20);
-}
-
-async function generateUsername(baseInput: string) {
-  const base = slugify(baseInput) || "user";
-  let candidate = base.slice(0, 20);
-  let counter = 1;
-
-  while (await repository.getUserByUsername(candidate)) {
-    const suffix = String(counter++);
-    candidate = `${base.slice(0, Math.max(3, 20 - suffix.length))}${suffix}`;
-  }
-
-  if (candidate.length < 3) {
-    return `user${Math.floor(Math.random() * 9000 + 1000)}`;
-  }
-
-  return candidate;
-}
-
 function buildToken(user: { id: number; email: string; username: string }) {
   return signToken({ userId: user.id, email: user.email, username: user.username });
 }
@@ -40,21 +15,37 @@ export function registerAuthRoutes(app: Express) {
       return res.status(400).json({ message: parsed.error.issues[0]?.message || "Invalid input" });
     }
 
-    const { email, password, nickname } = parsed.data;
-    const existing = await repository.getUserByEmail(email);
-    if (existing) {
+    const { username: rawUsername, email, password } = parsed.data;
+    // Enforce lowercase to prevent case-variant duplicates (e.g. Jazz vs jazz)
+    const username = rawUsername.toLowerCase();
+
+    const existingEmail = await repository.getUserByEmail(email);
+    if (existingEmail) {
       return res.status(409).json({ message: "Email already registered" });
     }
 
+    const existingUsername = await repository.getUserByUsername(username);
+    if (existingUsername) {
+      return res.status(409).json({
+        field: "username",
+        message: "Username already exists. Please choose another username.",
+      });
+    }
+
     const passwordHash = await bcrypt.hash(password, 10);
-    const username = await generateUsername(nickname || email.split("@")[0]);
+    // Use the chosen username as the initial nickname
+    const nickname = username;
 
     try {
       const user = await repository.createUser({ email, passwordHash, nickname, username });
       const token = buildToken(user);
       return res.status(201).json({ token, user });
     } catch {
-      return res.status(409).json({ message: "Nickname already taken" });
+      // Guard against rare race-condition where another signup claimed the same username/nickname
+      return res.status(409).json({
+        field: "username",
+        message: "Username already exists. Please choose another username.",
+      });
     }
   });
 

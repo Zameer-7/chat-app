@@ -23,6 +23,36 @@ import RoomChatPage from "@/pages/dashboard/room-chat";
 import DirectChatPage from "@/pages/dashboard/direct-chat";
 import NotFound from "@/pages/not-found";
 
+const PAGE_TITLES: Record<string, string> = {
+  "/": "Vibely",
+  "/login": "Login \u2022 Vibely",
+  "/signup": "Sign Up \u2022 Vibely",
+  "/dashboard": "Dashboard \u2022 Vibely",
+  "/rooms": "Rooms \u2022 Vibely",
+  "/friends": "Friends \u2022 Vibely",
+  "/friend-requests": "Friend Requests \u2022 Vibely",
+  "/search": "Search \u2022 Vibely",
+  "/profile": "Profile \u2022 Vibely",
+  "/settings": "Settings \u2022 Vibely",
+};
+
+function PageTitle() {
+  const [location] = useLocation();
+
+  useEffect(() => {
+    // Dynamic segments like /rooms/:id and /dm/:friendId
+    if (location.startsWith("/rooms/")) {
+      document.title = "Room Chat \u2022 Vibely";
+    } else if (location.startsWith("/dm/")) {
+      document.title = "Direct Message \u2022 Vibely";
+    } else {
+      document.title = PAGE_TITLES[location] ?? "Vibely";
+    }
+  }, [location]);
+
+  return null;
+}
+
 function GlobalEvents() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -155,6 +185,7 @@ export default function App() {
       <TooltipProvider>
         <AuthProvider>
           <GlobalEvents />
+          <PageTitle />
           <Toaster />
           <Router />
         </AuthProvider>

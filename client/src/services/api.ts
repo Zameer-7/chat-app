@@ -82,11 +82,17 @@ export async function authFetch<T = unknown>(url: string, init: RequestInit = {}
   return res.json() as Promise<T>;
 }
 
-export function signup(payload: { email: string; password: string; nickname: string }) {
+export function signup(payload: { username: string; email: string; password: string }) {
   return authFetch<AuthResponse>(api.auth.signup, {
     method: "POST",
     body: JSON.stringify(payload),
   });
+}
+
+export function checkUsernameAvailability(username: string) {
+  return authFetch<{ available: boolean }>(
+    `${api.users.checkUsername}?username=${encodeURIComponent(username)}`,
+  );
 }
 
 export function login(payload: { email: string; password: string }) {

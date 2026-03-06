@@ -16,6 +16,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   await pool.query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS reply_to_id INT`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_messages_room_id ON messages(room_id)`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_messages_room_created ON messages(room_id, created_at)`);
+  // Ensure unique constraints exist for username and email
+  await pool.query(`
+    DO $$ BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'users_username_unique' AND conrelid = 'users'::regclass
+      ) THEN
+        ALTER TABLE users ADD CONSTRAINT users_username_unique UNIQUE(username);
+      END IF;
+    END; $$;
+  `);
 
   registerAuthRoutes(app);
   registerUserRoutes(app);

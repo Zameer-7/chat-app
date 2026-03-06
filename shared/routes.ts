@@ -7,6 +7,7 @@ export const api = {
   },
   users: {
     search: "/api/users/search",
+    checkUsername: "/api/users/check-username",
   },
   friends: {
     list: "/api/friends",

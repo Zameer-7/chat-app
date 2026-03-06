@@ -78,9 +78,14 @@ export const insertUserSchema = createInsertSchema(users).pick({
 });
 
 export const signupSchema = z.object({
+  username: z
+    .string()
+    .regex(
+      /^[a-zA-Z0-9_]{3,20}$/,
+      "Username must be 3\u201320 characters and contain only letters, numbers, or underscores.",
+    ),
   email: z.string().email(),
   password: z.string().min(6),
-  nickname: z.string().min(2).max(25),
 });
 
 export const loginSchema = z.object({
