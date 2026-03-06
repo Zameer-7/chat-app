@@ -21,6 +21,16 @@ app.use(
 );
 
 app.use(express.urlencoded({ extended: false }));
+app.use((req, res, next) => {
+  const allowedOrigin = process.env.CORS_ORIGIN || "*";
+  res.header("Access-Control-Allow-Origin", allowedOrigin);
+  res.header("Access-Control-Allow-Headers", "Authorization, Content-Type");
+  res.header("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(204);
+  }
+  next();
+});
 
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {
