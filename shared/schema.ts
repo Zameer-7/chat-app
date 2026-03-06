@@ -53,6 +53,8 @@ export const messages = pgTable("messages", {
   replyToId: integer("reply_to_id"),
   status: text("status").notNull().default("sent"),
   deleted: boolean("deleted").notNull().default(false),
+  edited: boolean("edited").notNull().default(false),
+  editedAt: timestamp("edited_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

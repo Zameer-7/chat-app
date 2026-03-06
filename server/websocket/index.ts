@@ -304,6 +304,37 @@ export function registerWebSocket(server: Server) {
           }
         }
 
+        if (body.type === "message_edit" && body.messageId && body.content) {
+          const messageId = Number(body.messageId);
+          if (!Number.isInteger(messageId) || messageId <= 0) {
+            safeSend(ws, { type: "error", message: "Invalid message id" });
+            return;
+          }
+          try {
+            const updated = await repository.editMessage(messageId, user.userId, String(body.content));
+            if (!updated) {
+              safeSend(ws, { type: "error", message: "Message not found" });
+              return;
+            }
+            const payload = {
+              type: "message_updated",
+              messageId: updated.id,
+              content: updated.content,
+              edited: updated.edited,
+              editedAt: updated.editedAt,
+            };
+            if (updated.roomId) {
+              roomClients.get(updated.roomId)?.forEach((client) => safeSend(client, payload));
+            } else {
+              emitToUser(updated.senderId, payload);
+              if (updated.receiverId) emitToUser(updated.receiverId, payload);
+            }
+          } catch (err) {
+            safeSend(ws, { type: "error", message: (err as Error).message });
+          }
+          return;
+        }
+
         if (body.type === "typing" && typeof body.isTyping === "boolean") {
           const typingPayload = {
             type: "typing",

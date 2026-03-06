@@ -1,13 +1,13 @@
-﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+﻿import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation, useRoute } from "wouter";
-import EmojiPicker from "emoji-picker-react";
-import { ArrowLeft, Check, Crown, Image, Info, Link2, Pencil, Reply, Users, X } from "lucide-react";
+import { ArrowLeft, Check, Crown, Image, Info, Link2, Pencil, Reply, Search, Users, X } from "lucide-react";
 import { wsPaths } from "@shared/routes";
 import { useAuth } from "@/hooks/use-auth";
 import { useSocket } from "@/hooks/use-socket";
 import { ChatWindow } from "@/components/chat/chat-window";
 import { uploadImage } from "@/services/api";
+const EmojiPicker = lazy(() => import("emoji-picker-react"));
 import {
   deleteRoom,
   getJoinedRooms,
@@ -18,6 +18,7 @@ import {
   joinRoom,
   leaveRoom,
   renameRoom,
+  searchMessages,
   type ChatMessage,
 } from "@/services/chat-api";
 import { Button } from "@/components/ui/button";
@@ -43,6 +44,9 @@ export default function RoomChatPage() {
   const [showMembers, setShowMembers] = useState(false);
   const [isRenaming, setIsRenaming] = useState(false);
   const [editName, setEditName] = useState("");
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<ChatMessage[]>([]);
   const emojiPickerRef = useRef<HTMLDivElement>(null);
   const tempId = useRef(-1);
   const [liveMessages, setLiveMessages] = useState<ChatMessage[]>([]);
@@ -51,6 +55,7 @@ export default function RoomChatPage() {
   const [typingUsers, setTypingUsers] = useState<string[]>([]);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const PAGE_SIZE = 30;
 
@@ -167,6 +172,17 @@ export default function RoomChatPage() {
       );
       return;
     }
+    if (lastEvent.type === "message_updated") {
+      const msgId = Number(lastEvent.messageId);
+      setLiveMessages((prev) =>
+        prev.map((m) =>
+          m.id === msgId
+            ? { ...m, content: String(lastEvent.content), edited: true, editedAt: lastEvent.editedAt ? String(lastEvent.editedAt) : null }
+            : m,
+        ),
+      );
+      return;
+    }
     if (lastEvent.type === "reaction_added") {
       setLiveMessages((prev) =>
         prev.map((m) =>
@@ -232,6 +248,21 @@ export default function RoomChatPage() {
         send({ type: "typing", isTyping: false });
       }, 1500);
     }
+  };
+
+  const handleSearch = (query: string) => {
+    setSearchQuery(query);
+    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+    if (!query.trim() || query.trim().length < 2) {
+      setSearchResults([]);
+      return;
+    }
+    searchTimeoutRef.current = setTimeout(async () => {
+      try {
+        const results = await searchMessages(query.trim(), roomId);
+        setSearchResults(results);
+      } catch {}
+    }, 400);
   };
 
   const optimisticInsert = (payload: Partial<ChatMessage>) => {
@@ -426,6 +457,9 @@ export default function RoomChatPage() {
             <Button variant="ghost" size="sm" onClick={handleCopyInvite} title="Copy invite link">
               <Link2 className="h-4 w-4" />
             </Button>
+            <Button variant={showSearch ? "secondary" : "ghost"} size="sm" onClick={() => { setShowSearch((s) => !s); setSearchQuery(""); setSearchResults([]); }} title="Search messages">
+              <Search className="h-4 w-4" />
+            </Button>
             <Button variant={showInfo ? "secondary" : "ghost"} size="sm" onClick={() => setShowInfo((s) => !s)} title="Room info">
               <Info className="h-4 w-4" />
             </Button>
@@ -507,6 +541,46 @@ export default function RoomChatPage() {
         </div>
       )}
 
+      {/* Search bar */}
+      {showSearch && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <Input
+              autoFocus
+              value={searchQuery}
+              onChange={(e) => handleSearch(e.target.value)}
+              placeholder="Search messages…"
+              className="flex-1 h-8 text-sm text-base"
+            />
+            <button type="button" className="text-muted-foreground hover:text-foreground p-1 min-h-[36px] min-w-[36px] flex items-center justify-center touch-manipulation" onClick={() => { setShowSearch(false); setSearchQuery(""); setSearchResults([]); }}>
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          {searchResults.length > 0 && (
+            <div className="rounded-xl border bg-card p-2 max-h-52 overflow-y-auto space-y-0.5 shadow-md">
+              {searchResults.map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  className="w-full text-left rounded-lg px-3 py-2 hover:bg-muted text-sm transition-colors"
+                  onClick={() => {
+                    const el = document.getElementById(`message-${m.id}`);
+                    if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+                  }}
+                >
+                  <p className="text-[11px] font-semibold text-muted-foreground">{m.senderNickname}</p>
+                  <p className="truncate">{m.content}</p>
+                </button>
+              ))}
+              <p className="text-xs text-muted-foreground text-center py-1">{searchResults.length} result{searchResults.length !== 1 ? "s" : ""}</p>
+            </div>
+          )}
+          {searchQuery.trim().length >= 2 && searchResults.length === 0 && (
+            <p className="text-xs text-muted-foreground px-1">No results found.</p>
+          )}
+        </div>
+      )}
+
       {/* Chat */}
       <ChatWindow
         messages={messages}
@@ -514,6 +588,7 @@ export default function RoomChatPage() {
         onReact={(messageId, reaction) => send({ type: "reaction_add", messageId, reaction })}
         onDelete={(messageId, scope) => send({ type: "message_delete", messageId, scope })}
         onReply={(message) => setReplyTo(message)}
+        onEdit={(messageId, content) => send({ type: "message_edit", messageId, content })}
         onLoadMore={() => { if (hasNextPage && !isFetchingNextPage) fetchNextPage(); }}
         isLoadingMore={isFetchingNextPage}
         hasMore={hasNextPage !== false}
@@ -530,88 +605,102 @@ export default function RoomChatPage() {
         </div>
       )}
 
-      {/* Emoji picker */}
-      {showEmoji && (
-        <div ref={emojiPickerRef} className="rounded-xl border bg-card p-2 w-fit">
-          <EmojiPicker onEmojiClick={(emoji) => setText((prev) => prev + emoji.emoji)} />
-        </div>
-      )}
+      {/* Sticky bottom: emoji picker, GIF picker, reply preview, send form */}
+      <div className="sticky bottom-0 z-10 bg-background border-t pt-2 -mx-3 px-3 space-y-2 pb-2">
+        {/* Emoji picker */}
+        {showEmoji && (
+          <div ref={emojiPickerRef} className="rounded-xl border bg-card overflow-hidden">
+            <Suspense fallback={<div className="h-[350px] flex items-center justify-center text-sm text-muted-foreground">Loading…</div>}>
+              <EmojiPicker onEmojiClick={(emoji) => setText((prev) => prev + emoji.emoji)} width="100%" />
+            </Suspense>
+          </div>
+        )}
 
-      {/* GIF picker */}
-      {showGif && (
-        <div className="rounded-xl border bg-card p-3 space-y-2">
-          <div className="flex gap-2">
-            <Input
-              value={gifQuery}
-              onChange={(e) => setGifQuery(e.target.value)}
-              placeholder="Search GIFs"
-              onKeyDown={(e) => { if (e.key === "Enter") fetchGifs(gifQuery); }}
-            />
-            <Button type="button" onClick={() => fetchGifs(gifQuery)}>Search</Button>
+        {/* GIF picker */}
+        {showGif && (
+          <div className="rounded-xl border bg-card p-3 space-y-2">
+            <div className="flex gap-2">
+              <Input
+                value={gifQuery}
+                onChange={(e) => setGifQuery(e.target.value)}
+                placeholder="Search GIFs"
+                className="text-base"
+                onKeyDown={(e) => { if (e.key === "Enter") fetchGifs(gifQuery); }}
+              />
+              <Button type="button" onClick={() => fetchGifs(gifQuery)}>Search</Button>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 max-h-64 overflow-y-auto">
+              {gifs.map((gif) => (
+                <button
+                  key={gif}
+                  type="button"
+                  className="rounded-lg overflow-hidden border min-h-[80px] touch-manipulation"
+                  onClick={() => {
+                    const clientMessageId = optimisticInsert({ messageType: "gif", gifUrl: gif, content: "" });
+                    send({ type: "room_message", gifUrl: gif, clientMessageId });
+                    setShowGif(false);
+                  }}
+                >
+                  <img src={gif} alt="gif" className="h-24 w-full object-cover" />
+                </button>
+              ))}
+            </div>
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 max-h-64 overflow-y-auto">
-            {gifs.map((gif) => (
-              <button
-                key={gif}
-                type="button"
-                className="rounded-lg overflow-hidden border"
-                onClick={() => {
-                  const clientMessageId = optimisticInsert({ messageType: "gif", gifUrl: gif, content: "" });
-                  send({ type: "room_message", gifUrl: gif, clientMessageId });
-                  setShowGif(false);
-                }}
-              >
-                <img src={gif} alt="gif" className="h-24 w-full object-cover" />
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
+        )}
 
-      {/* Reply preview */}
-      {replyTo && (
-        <div className="flex items-center gap-2 rounded-xl border bg-muted/50 px-3 py-2 text-sm">
-          <Reply className="h-4 w-4 text-primary shrink-0" />
-          <div className="flex-1 min-w-0">
-            <p className="text-xs font-semibold text-primary">{replyTo.senderNickname}</p>
-            <p className="text-xs text-muted-foreground truncate">{replyTo.content || (replyTo.gifUrl ? "GIF" : "...")}</p>
+        {/* Reply preview */}
+        {replyTo && (
+          <div className="flex items-center gap-2 rounded-xl border bg-muted/50 px-3 py-2 text-sm">
+            <Reply className="h-4 w-4 text-primary shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-semibold text-primary">{replyTo.senderNickname}</p>
+              <p className="text-xs text-muted-foreground truncate">{replyTo.content || (replyTo.gifUrl ? "GIF" : "...")}</p>
+            </div>
+            <button type="button" onClick={() => setReplyTo(null)} className="text-muted-foreground hover:text-foreground shrink-0 min-h-[36px] min-w-[36px] flex items-center justify-center touch-manipulation">
+              <X className="h-4 w-4" />
+            </button>
           </div>
-          <button type="button" onClick={() => setReplyTo(null)} className="text-muted-foreground hover:text-foreground shrink-0">
-            <X className="h-4 w-4" />
+        )}
+
+        {/* Send form */}
+        <form className="flex items-center gap-1.5" onSubmit={handleSend}>
+          {/* Hidden image file input */}
+          <input
+            ref={imageInputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/gif"
+            className="hidden"
+            onChange={handleRoomImageUpload}
+          />
+          <button
+            type="button"
+            disabled={left || imageUploading}
+            onClick={() => imageInputRef.current?.click()}
+            title="Send image"
+            className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg border bg-secondary hover:bg-secondary/80 text-secondary-foreground transition-colors shrink-0 touch-manipulation disabled:opacity-50"
+          >
+            <Image className="h-4 w-4" />
           </button>
-        </div>
-      )}
-
-      {/* Send form */}
-      <form className="flex items-center gap-2 p-0" onSubmit={handleSend}>
-        {/* Hidden image file input */}
-        <input
-          ref={imageInputRef}
-          type="file"
-          accept="image/png,image/jpeg,image/gif"
-          className="hidden"
-          onChange={handleRoomImageUpload}
-        />
-        <Button
-          type="button"
-          variant="secondary"
-          disabled={left || imageUploading}
-          onClick={() => imageInputRef.current?.click()}
-          title="Send image"
-        >
-          <Image className="h-4 w-4" />
-        </Button>
-        <Button type="button" variant="secondary" onClick={() => setShowGif((s) => !s)}>GIF</Button>
-        <Button type="button" variant="secondary" onClick={() => setShowEmoji((s) => !s)}>😊</Button>
-        <Input
-          value={text}
-          onChange={(e) => handleTextChange(e.target.value)}
-          placeholder={left ? "You left this room" : "Type a room message"}
-          disabled={left}
-          className="flex-1 h-10"
-        />
-        <Button type="submit" disabled={!canSend}>Send</Button>
-      </form>
+          <button
+            type="button"
+            onClick={() => setShowGif((s) => !s)}
+            className="min-h-[44px] px-2 flex items-center justify-center rounded-lg border bg-secondary hover:bg-secondary/80 text-secondary-foreground text-xs font-medium transition-colors shrink-0 touch-manipulation"
+          >GIF</button>
+          <button
+            type="button"
+            onClick={() => setShowEmoji((s) => !s)}
+            className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg border bg-secondary hover:bg-secondary/80 text-secondary-foreground text-base transition-colors shrink-0 touch-manipulation"
+          >😊</button>
+          <Input
+            value={text}
+            onChange={(e) => handleTextChange(e.target.value)}
+            placeholder={left ? "You left this room" : "Type a message…"}
+            disabled={left}
+            className="flex-1 h-10 text-base"
+          />
+          <Button type="submit" disabled={!canSend} className="min-h-[44px] shrink-0 touch-manipulation">Send</Button>
+        </form>
+      </div>
     </div>
   );
 }

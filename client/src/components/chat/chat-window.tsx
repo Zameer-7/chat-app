@@ -43,6 +43,7 @@ export function ChatWindow({
   onReact,
   onDelete,
   onReply,
+  onEdit,
   onLoadMore,
   isLoadingMore,
   hasMore,
@@ -53,6 +54,7 @@ export function ChatWindow({
   onReact?: (messageId: number, reaction: string) => void;
   onDelete?: (messageId: number, scope: "me" | "everyone") => void;
   onReply?: (message: ChatMessage) => void;
+  onEdit?: (messageId: number, newContent: string) => void;
   onLoadMore?: () => void;
   isLoadingMore?: boolean;
   hasMore?: boolean;
@@ -61,6 +63,8 @@ export function ChatWindow({
   const [menu, setMenu] = useState<MenuState>(null);
   const [reactionMenu, setReactionMenu] = useState<ReactionMenuState>(null);
   const [atBottom, setAtBottom] = useState(true);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editContent, setEditContent] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
   const prevScrollHeightRef = useRef<number>(0);
   const isInitialLoadRef = useRef(true);
@@ -164,7 +168,7 @@ export function ChatWindow({
 
   return (
     <div className="relative" onClick={closeTransientMenus}>
-      <div ref={scrollRef} onScroll={handleScroll} className="h-[65vh] overflow-y-auto scroll-smooth rounded-2xl border bg-chat-pattern p-4 space-y-2">
+      <div ref={scrollRef} onScroll={handleScroll} className="h-[calc(100vh-200px)] md:h-[65vh] overflow-y-auto scroll-smooth rounded-2xl border bg-chat-pattern p-4 space-y-2">
         {/* Loading / end-of-history indicator */}
         {hasMore === false && messages.length > 0 && (
           <p className="text-xs text-muted-foreground text-center py-2">No earlier messages</p>
@@ -183,7 +187,7 @@ export function ChatWindow({
               className={`flex rounded-lg transition-colors hover:bg-gray-100 dark:hover:bg-gray-700 ${isOwn ? "justify-end" : "justify-start"}`}
             >
               <div
-                className={`group max-w-[70%] rounded-2xl px-4 py-2 shadow-sm transition-transform hover:-translate-y-0.5 ${
+                className={`group max-w-[85%] sm:max-w-[75%] lg:max-w-[65%] rounded-2xl px-4 py-2 shadow-sm transition-transform hover:-translate-y-0.5 ${
                   isOwn ? "bg-[hsl(var(--bubble-out))] rounded-tr-sm" : "bg-[hsl(var(--bubble-in))] border rounded-tl-sm"
                 }`}
                 onContextMenu={(event) => {
@@ -216,13 +220,55 @@ export function ChatWindow({
 
                 {message.deleted ? (
                   <p className={`text-sm italic ${isOwn ? "bubble-meta-out" : "bubble-meta-in"}`}>This message was deleted</p>
+                ) : editingId === message.id ? (
+                  <div className="min-w-[180px]">
+                    <textarea
+                      className="w-full bg-transparent border rounded-lg px-2 py-1 text-sm text-base resize-none focus:outline-none focus:ring-1 focus:ring-primary/40"
+                      value={editContent}
+                      onChange={(e) => setEditContent(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey) {
+                          e.preventDefault();
+                          if (editContent.trim() && editContent.trim() !== message.content) {
+                            onEdit?.(message.id, editContent.trim());
+                          }
+                          setEditingId(null);
+                          setEditContent("");
+                        }
+                        if (e.key === "Escape") {
+                          setEditingId(null);
+                          setEditContent("");
+                        }
+                      }}
+                      rows={2}
+                      autoFocus
+                    />
+                    <div className="flex justify-end gap-2 mt-1">
+                      <button
+                        type="button"
+                        className="text-xs text-muted-foreground hover:text-foreground px-2 py-0.5 min-h-[36px] touch-manipulation"
+                        onClick={() => { setEditingId(null); setEditContent(""); }}
+                      >Cancel</button>
+                      <button
+                        type="button"
+                        className="text-xs text-primary hover:text-primary/80 px-2 py-0.5 font-semibold min-h-[36px] touch-manipulation"
+                        onClick={() => {
+                          if (editContent.trim() && editContent.trim() !== message.content) {
+                            onEdit?.(message.id, editContent.trim());
+                          }
+                          setEditingId(null);
+                          setEditContent("");
+                        }}
+                      >Save</button>
+                    </div>
+                  </div>
                 ) : message.messageType === "gif" && message.gifUrl ? (
                   <img src={message.gifUrl} alt="gif" className="max-h-56 w-full rounded-lg object-cover" />
                 ) : message.messageType === "image" && message.gifUrl ? (
                   <img
                     src={message.gifUrl}
                     alt="Image"
-                    className="max-w-full sm:max-w-xs rounded-lg"
+                    className="max-w-full max-h-64 rounded-lg object-cover"
                     loading="lazy"
                   />
                 ) : (
@@ -240,6 +286,9 @@ export function ChatWindow({
                 )}
 
                 <p className={`text-[10px] mt-1 text-right inline-flex items-center justify-end w-full ${isOwn ? "bubble-meta-out" : "bubble-meta-in"}`} title={format(new Date(message.createdAt), "PPpp")}>
+                  {!message.deleted && message.edited && (
+                    <span className="text-[10px] italic opacity-60 mr-1">(edited)</span>
+                  )}
                   <span className="opacity-80 group-hover:opacity-100">{format(new Date(message.createdAt), "HH:mm")}</span>
                   {isOwn && renderStatus(message.status || "sent")}
                 </p>
@@ -308,6 +357,18 @@ export function ChatWindow({
             }}
           >
             Reply
+          </button>
+          <button
+            type="button"
+            className="w-full px-3 py-2 text-left text-sm hover:bg-muted disabled:text-muted-foreground"
+            disabled={contextMessage.senderId !== currentUserId || contextMessage.deleted || contextMessage.messageType === "gif" || contextMessage.messageType === "image"}
+            onClick={() => {
+              setEditingId(contextMessage.id);
+              setEditContent(contextMessage.content);
+              setMenu(null);
+            }}
+          >
+            Edit
           </button>
           <button
             type="button"

@@ -1,7 +1,8 @@
 import { Link, useLocation } from "wouter";
-import { Home, Users, Search, Inbox, MessageCircle, LogOut, Settings, CircleUserRound } from "lucide-react";
+import { Home, Users, Search, Inbox, MessageCircle, LogOut, Settings, CircleUserRound, Menu, X } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import { api } from "@shared/routes";
 import { authFetch } from "@/services/api";
 import { NovaLogo } from "./nova-logo";
@@ -35,6 +36,7 @@ function getInitials(name?: string) {
 export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const [location, setLocation] = useLocation();
   const { user, logout } = useAuth();
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   const { data: frCount } = useQuery<{ count: number }>({
     queryKey: ["friend-requests-count"],
@@ -64,6 +66,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
               ? "bg-white/20 text-white border-l-4 border-white/70"
               : "text-white/70 hover:bg-white/10 hover:text-white"
           }`}
+          onClick={() => setMobileOpen(false)}
         >
           <Icon className="h-4 w-4 shrink-0" />
           <span className="flex-1">{label}</span>
@@ -78,12 +81,51 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="min-h-screen bg-background flex">
-      <aside className="w-64 shrink-0 flex flex-col sidebar-themed shadow-xl">
-        {/* Logo */}
+    <div className="min-h-screen bg-background flex flex-col lg:flex-row">
+      {/* Mobile header — only visible below lg breakpoint */}
+      <div className="lg:hidden sticky top-0 z-30 flex items-center gap-3 px-4 py-3 sidebar-themed border-b border-white/10">
+        <button
+          type="button"
+          aria-label="Open navigation"
+          onClick={() => setMobileOpen(true)}
+          className="min-h-[44px] min-w-[44px] flex items-center justify-center text-white/80 hover:text-white rounded-lg hover:bg-white/10 touch-manipulation"
+        >
+          <Menu className="h-5 w-5" />
+        </button>
+        <NovaLogo compact />
+        <span className="text-base font-bold text-white tracking-tight">Vibely</span>
+      </div>
+
+      {/* Overlay backdrop when mobile sidebar is open */}
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+          onClick={() => setMobileOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
+      {/* Sidebar */}
+      <aside
+        className={`
+          fixed inset-y-0 left-0 z-50 w-64 flex flex-col sidebar-themed shadow-xl
+          transform transition-transform duration-300 ease-in-out
+          lg:static lg:translate-x-0 lg:shrink-0
+          ${mobileOpen ? "translate-x-0" : "-translate-x-full"}
+        `}
+      >
+        {/* Logo — includes close button on mobile */}
         <div className="flex items-center gap-2 px-4 py-5 border-b border-white/10">
           <NovaLogo compact />
-          <span className="text-lg font-bold text-white tracking-tight">Vibely</span>
+          <span className="text-lg font-bold text-white tracking-tight flex-1">Vibely</span>
+          <button
+            type="button"
+            aria-label="Close navigation"
+            className="lg:hidden min-h-[44px] min-w-[44px] flex items-center justify-center text-white/60 hover:text-white rounded-lg hover:bg-white/10 touch-manipulation"
+            onClick={() => setMobileOpen(false)}
+          >
+            <X className="h-5 w-5" />
+          </button>
         </div>
 
         {/* User Card */}
@@ -127,7 +169,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
         {/* Logout */}
         <div className="px-3 pb-4 border-t border-white/10 pt-3">
           <button
-            className="w-full flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium text-white/70 hover:bg-white/10 hover:text-white transition-colors duration-150"
+            className="w-full flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium text-white/70 hover:bg-white/10 hover:text-white transition-colors duration-150 min-h-[44px] touch-manipulation"
             onClick={() => {
               logout();
               setLocation("/login");
@@ -139,7 +181,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
 
-      <main className="flex-1 overflow-auto p-6">{children}</main>
+      <main className="flex-1 overflow-auto p-3 lg:p-6">{children}</main>
     </div>
   );
 }

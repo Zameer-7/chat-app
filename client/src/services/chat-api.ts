@@ -11,6 +11,8 @@ export type ChatMessage = {
   messageType?: "text" | "gif" | "image";
   gifUrl?: string | null;
   deleted?: boolean;
+  edited?: boolean;
+  editedAt?: string | null;
   createdAt: string;
   senderNickname: string;
   replyToId?: number | null;
@@ -125,4 +127,11 @@ export function respondToFriendRequest(id: number, status: "accepted" | "rejecte
 
 export function getDirectMessages(friendId: number) {
   return authFetch<ChatMessage[]>(api.direct.messages(friendId));
+}
+
+export function searchMessages(query: string, roomId?: string, friendId?: number) {
+  const params = new URLSearchParams({ query });
+  if (roomId) params.set("roomId", roomId);
+  if (friendId) params.set("friendId", String(friendId));
+  return authFetch<ChatMessage[]>(`${api.messages.search}?${params.toString()}`);
 }

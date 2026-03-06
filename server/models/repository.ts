@@ -308,7 +308,7 @@ export const repository = {
     return db.execute(sql`
       select m.id, m.room_id as "roomId", m.sender_id as "senderId", m.sender_nickname as "senderNickname", m.receiver_id as "receiverId",
              m.content, m.message_type as "messageType", m.gif_url as "gifUrl", m.status, m.created_at as "createdAt",
-             m.deleted, m.reply_to_id as "replyToId",
+             m.deleted, m.reply_to_id as "replyToId", m.edited, m.edited_at as "editedAt",
              rm.content as "replyToContent", rm.sender_nickname as "replyToNickname",
              coalesce(r.reactions, '[]'::json) as "reactions"
       from messages m
@@ -483,7 +483,7 @@ export const repository = {
     return db.execute(sql`
       select m.id, m.room_id as "roomId", m.sender_id as "senderId", m.sender_nickname as "senderNickname", m.receiver_id as "receiverId",
              m.content, m.message_type as "messageType", m.gif_url as "gifUrl", m.status, m.created_at as "createdAt",
-             m.deleted, m.reply_to_id as "replyToId",
+             m.deleted, m.reply_to_id as "replyToId", m.edited, m.edited_at as "editedAt",
              rm.content as "replyToContent", rm.sender_nickname as "replyToNickname",
              coalesce(r.reactions, '[]'::json) as "reactions"
       from messages m
@@ -579,5 +579,56 @@ export const repository = {
       .where(eq(messages.id, messageId))
       .returning();
     return updated;
+  },
+
+  async editMessage(messageId: number, userId: number, content: string) {
+    const [msg] = await db.select().from(messages).where(eq(messages.id, messageId));
+    if (!msg) return null;
+    if (msg.senderId !== userId) throw Object.assign(new Error("Only the sender can edit this message"), { status: 403 });
+    if (msg.deleted) throw Object.assign(new Error("Cannot edit a deleted message"), { status: 400 });
+    const trimmed = content.trim();
+    if (!trimmed) throw Object.assign(new Error("Message content cannot be empty"), { status: 400 });
+    const [updated] = await db
+      .update(messages)
+      .set({ content: trimmed, edited: true, editedAt: new Date() })
+      .where(eq(messages.id, messageId))
+      .returning();
+    return updated;
+  },
+
+  async searchMessages(query: string, roomId?: string, userId?: number, friendId?: number) {
+    const term = `%${query.trim()}%`;
+    if (roomId) {
+      return db.execute(sql`
+        select m.id, m.room_id as "roomId", m.sender_id as "senderId", m.sender_nickname as "senderNickname",
+               m.receiver_id as "receiverId", m.content, m.message_type as "messageType", m.gif_url as "gifUrl",
+               m.status, m.created_at as "createdAt", m.deleted, m.reply_to_id as "replyToId",
+               m.edited, m.edited_at as "editedAt"
+        from messages m
+        where m.room_id = ${roomId}
+          and m.deleted = false
+          and m.message_type = 'text'
+          and m.content ilike ${term}
+        order by m.created_at asc
+        limit 50
+      `);
+    }
+    if (userId && friendId) {
+      return db.execute(sql`
+        select m.id, m.room_id as "roomId", m.sender_id as "senderId", m.sender_nickname as "senderNickname",
+               m.receiver_id as "receiverId", m.content, m.message_type as "messageType", m.gif_url as "gifUrl",
+               m.status, m.created_at as "createdAt", m.deleted, m.reply_to_id as "replyToId",
+               m.edited, m.edited_at as "editedAt"
+        from messages m
+        where ((m.sender_id = ${userId} and m.receiver_id = ${friendId})
+           or (m.sender_id = ${friendId} and m.receiver_id = ${userId}))
+          and m.deleted = false
+          and m.message_type = 'text'
+          and m.content ilike ${term}
+        order by m.created_at asc
+        limit 50
+      `);
+    }
+    return { rows: [] as unknown[] };
   },
 };

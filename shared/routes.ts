@@ -11,6 +11,8 @@ export const api = {
   },
   messages: {
     uploadImage: "/api/messages/upload-image",
+    search: "/api/messages/search",
+    edit: (id: number) => `/api/messages/${id}/edit`,
   },
   friends: {
     list: "/api/friends",
