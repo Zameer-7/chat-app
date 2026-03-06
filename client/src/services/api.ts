@@ -20,6 +20,12 @@ export type SafeUser = {
 export type AuthResponse = { token: string; user: SafeUser };
 
 const TOKEN_KEY = "chat_app_token";
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/+$/, "");
+
+function withApiBase(url: string) {
+  if (/^https?:\/\//i.test(url)) return url;
+  return `${API_BASE_URL}${url}`;
+}
 
 export function getToken() {
   return localStorage.getItem(TOKEN_KEY);
@@ -47,7 +53,7 @@ export async function authFetch<T = unknown>(url: string, init: RequestInit = {}
     headers.set("Authorization", `Bearer ${token}`);
   }
 
-  const res = await fetch(url, { ...init, headers });
+  const res = await fetch(withApiBase(url), { ...init, headers });
   const contentType = res.headers.get("content-type") || "";
 
   if (!res.ok) {

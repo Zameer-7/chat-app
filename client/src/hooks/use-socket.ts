@@ -22,8 +22,10 @@ export function useSocket(pathFactory: (token: string) => string) {
       return;
     }
 
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const ws = new WebSocket(`${protocol}//${window.location.host}${path}`);
+    const configuredBase = (import.meta.env.VITE_WS_BASE_URL || "").replace(/\/+$/, "");
+    const fallbackProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const wsBase = configuredBase || `${fallbackProtocol}//${window.location.host}`;
+    const ws = new WebSocket(`${wsBase}${path}`);
     wsRef.current = ws;
 
     ws.onopen = () => setStatus("connected");
