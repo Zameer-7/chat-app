@@ -3,6 +3,7 @@ import { authMiddleware, type AuthedRequest } from "../middleware/auth";
 import { repository } from "../models/repository";
 import { getOnlineUsersForRoomSockets } from "../websocket/notifier";
 import { broadcastToRoom } from "../websocket/index";
+import { emitToUser } from "../websocket/notifier";
 
 export function registerRoomRoutes(app: Express) {
   app.post("/api/rooms", authMiddleware, async (req: AuthedRequest, res) => {
@@ -111,5 +112,30 @@ export function registerRoomRoutes(app: Express) {
       participants: stats.participants,
       online: getOnlineUsersForRoomSockets(stats.participantIds),
     });
+  });
+
+  app.post("/api/rooms/:id/add-members", authMiddleware, async (req: AuthedRequest, res) => {
+    const roomId = String(req.params.id);
+    const room = await repository.getRoom(roomId);
+    if (!room) return res.status(404).json({ message: "Room not found" });
+
+    const isMember = await repository.isActiveRoomMember(req.user!.userId, roomId);
+    if (!isMember) return res.status(403).json({ message: "You must be an active member to add others" });
+
+    const userIds: number[] = req.body?.userIds;
+    if (!Array.isArray(userIds) || userIds.length === 0) {
+      return res.status(400).json({ message: "userIds array is required" });
+    }
+    if (userIds.length > 50) {
+      return res.status(400).json({ message: "Cannot add more than 50 members at once" });
+    }
+
+    const added = await repository.addMembersToRoom(roomId, userIds.map(Number).filter(Number.isInteger));
+    // Notify added users and broadcast to room
+    for (const userId of added) {
+      broadcastToRoom(roomId, { type: "user_joined", roomId, userId });
+      emitToUser(userId, { type: "room_invite", roomId, roomName: room.roomName, invitedBy: req.user!.userId });
+    }
+    return res.json({ added: added.length });
   });
 }

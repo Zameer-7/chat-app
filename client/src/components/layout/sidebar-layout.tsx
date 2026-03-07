@@ -3,8 +3,7 @@ import { Home, Users, Search, Inbox, MessageCircle, LogOut, Settings, CircleUser
 import { useAuth } from "@/hooks/use-auth";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { api } from "@shared/routes";
-import { authFetch } from "@/services/api";
+import { getUnreadCounts } from "@/services/chat-api";
 import { NovaLogo } from "./nova-logo";
 import { usePwa } from "@/hooks/use-pwa";
 
@@ -40,13 +39,15 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const { canInstall, installApp } = usePwa();
 
-  const { data: frCount } = useQuery<{ count: number }>({
-    queryKey: ["friend-requests-count"],
-    queryFn: () => authFetch<{ count: number }>(api.friendRequests.count),
-    refetchInterval: 30_000,
+  const { data: unread } = useQuery({
+    queryKey: ["unread-counts"],
+    queryFn: getUnreadCounts,
+    refetchInterval: 15_000,
   });
 
-  const friendRequestCount = frCount?.count ?? 0;
+  const friendRequestCount = unread?.friendRequests ?? 0;
+  const totalDmUnread = unread?.dm?.reduce((sum, d) => sum + d.count, 0) ?? 0;
+  const totalRoomUnread = unread?.rooms?.reduce((sum, r) => sum + r.count, 0) ?? 0;
 
   function NavLink({
     href,
@@ -147,9 +148,12 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
 
         {/* Nav */}
         <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-0.5">
-          {mainNav.map((item) => (
-            <NavLink key={item.href} {...item} />
-          ))}
+          {mainNav.map((item) => {
+            let badge: number | undefined;
+            if (item.href === "/rooms") badge = totalRoomUnread || undefined;
+            if (item.href === "/friends") badge = totalDmUnread || undefined;
+            return <NavLink key={item.href} {...item} badge={badge} />;
+          })}
 
           <div className="my-3 border-t border-white/10" />
 
@@ -188,20 +192,27 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
       {/* Bottom navigation bar — mobile only */}
       <nav className="fixed bottom-0 inset-x-0 z-30 lg:hidden flex items-stretch bg-background border-t border-border shadow-lg safe-area-bottom">
         {[
-          { href: "/dashboard", icon: Home, label: "Home" },
-          { href: "/rooms", icon: MessageCircle, label: "Rooms" },
-          { href: "/friends", icon: Users, label: "Friends" },
-          { href: "/profile", icon: CircleUserRound, label: "Profile" },
-        ].map(({ href, icon: Icon, label }) => {
+          { href: "/dashboard", icon: Home, label: "Home", badge: 0 },
+          { href: "/rooms", icon: MessageCircle, label: "Rooms", badge: totalRoomUnread },
+          { href: "/friends", icon: Users, label: "Friends", badge: totalDmUnread },
+          { href: "/profile", icon: CircleUserRound, label: "Profile", badge: 0 },
+        ].map(({ href, icon: Icon, label, badge }) => {
           const active = location === href || location.startsWith(`${href}/`);
           return (
             <Link key={href} href={href}>
               <a
-                className={`flex-1 flex flex-col items-center justify-center gap-0.5 py-2 min-h-[56px] text-[10px] font-medium transition-colors touch-manipulation ${
+                className={`flex-1 flex flex-col items-center justify-center gap-0.5 py-2 min-h-[56px] text-[10px] font-medium transition-colors touch-manipulation relative ${
                   active ? "text-primary" : "text-muted-foreground hover:text-foreground"
                 }`}
               >
-                <Icon className={`h-5 w-5 ${active ? "stroke-[2.5]" : ""}`} />
+                <div className="relative">
+                  <Icon className={`h-5 w-5 ${active ? "stroke-[2.5]" : ""}`} />
+                  {badge > 0 && (
+                    <span className="absolute -top-1.5 -right-2.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white">
+                      {badge > 99 ? "99+" : badge}
+                    </span>
+                  )}
+                </div>
                 {label}
               </a>
             </Link>

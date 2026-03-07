@@ -1,7 +1,7 @@
 ﻿import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation, useRoute } from "wouter";
-import { ArrowLeft, Archive, BellOff, Check, Crown, Image, Info, Link2, MoreVertical, Pencil, Reply, Search, Users, X } from "lucide-react";
+import { ArrowLeft, Archive, BellOff, Check, Crown, Image, Info, Link2, MoreVertical, Pencil, Reply, Search, UserPlus, Users, X } from "lucide-react";
 import { wsPaths } from "@shared/routes";
 import { useAuth } from "@/hooks/use-auth";
 import { useSocket } from "@/hooks/use-socket";
@@ -9,7 +9,9 @@ import { ChatWindow } from "@/components/chat/chat-window";
 import { uploadImage } from "@/services/api";
 const EmojiPicker = lazy(() => import("emoji-picker-react"));
 import {
+  addMembersToRoom,
   deleteRoom,
+  getFriends,
   getJoinedRooms,
   getRoom,
   getRoomMembers,
@@ -66,6 +68,7 @@ export default function RoomChatPage() {
   const [showChatMenu, setShowChatMenu] = useState(false);
   const [showMuteOptions, setShowMuteOptions] = useState(false);
   const chatMenuRef = useRef<HTMLDivElement>(null);
+  const [showAddMembers, setShowAddMembers] = useState(false);
 
   const { data: chatSettingsList = [] } = useQuery({
     queryKey: ["chat-settings"],
@@ -605,7 +608,20 @@ export default function RoomChatPage() {
       {/* Members Panel */}
       {showMembers && (
         <div className="rounded-2xl border bg-card px-4 py-3 space-y-2">
-          <h3 className="font-semibold text-sm">Members ({members.length})</h3>
+          <div className="flex items-center justify-between">
+            <h3 className="font-semibold text-sm">Members ({members.length})</h3>
+            {!left && (
+              <Button
+                variant={showAddMembers ? "secondary" : "outline"}
+                size="sm"
+                className="gap-1 text-xs h-7"
+                onClick={() => setShowAddMembers((s) => !s)}
+              >
+                <UserPlus className="h-3.5 w-3.5" />
+                Add
+              </Button>
+            )}
+          </div>
           {members.length === 0 ? (
             <p className="text-xs text-muted-foreground">Loading…</p>
           ) : (
@@ -636,6 +652,9 @@ export default function RoomChatPage() {
           )}
         </div>
       )}
+
+      {/* Add Members Panel */}
+      {showAddMembers && <AddMembersPanel roomId={roomId} members={members} onClose={() => setShowAddMembers(false)} />}
 
       {/* Search bar */}
       {showSearch && (
@@ -811,6 +830,112 @@ export default function RoomChatPage() {
           <Button type="submit" disabled={!canSend} className="min-h-[44px] shrink-0 touch-manipulation">Send</Button>
         </form>
       </div>
+    </div>
+  );
+}
+
+/* ─── Add Members Panel (extracted for clarity) ─── */
+
+function AddMembersPanel({
+  roomId,
+  members,
+  onClose,
+}: {
+  roomId: string;
+  members: { userId: number; nickname: string; leftAt: string | null }[];
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const [selected, setSelected] = useState<number[]>([]);
+
+  const { data: friends = [], isLoading } = useQuery({
+    queryKey: ["friends"],
+    queryFn: getFriends,
+  });
+
+  const activeMemberIds = new Set(
+    members.filter((m) => !m.leftAt).map((m) => m.userId),
+  );
+
+  const inviteable = friends.filter((f: any) => !activeMemberIds.has(f.id));
+
+  const toggle = (id: number) =>
+    setSelected((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
+
+  const mutation = useMutation({
+    mutationFn: () => addMembersToRoom(roomId, selected),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["room-members", roomId] });
+      queryClient.invalidateQueries({ queryKey: ["room-stats", roomId] });
+      toast({ title: `${selected.length} member${selected.length > 1 ? "s" : ""} added!` });
+      setSelected([]);
+      onClose();
+    },
+    onError: (err: any) =>
+      toast({ title: err.message || "Failed to add members", variant: "destructive" }),
+  });
+
+  return (
+    <div className="rounded-2xl border bg-card px-4 py-3 space-y-3">
+      <div className="flex items-center justify-between">
+        <h3 className="font-semibold text-sm">Add Friends to Room</h3>
+        <button
+          type="button"
+          onClick={onClose}
+          className="text-muted-foreground hover:text-foreground"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+
+      {isLoading ? (
+        <p className="text-xs text-muted-foreground">Loading friends…</p>
+      ) : inviteable.length === 0 ? (
+        <p className="text-xs text-muted-foreground">All your friends are already in this room.</p>
+      ) : (
+        <>
+          <div className="space-y-1.5 max-h-52 overflow-y-auto pr-1">
+            {inviteable.map((f: any) => {
+              const checked = selected.includes(f.id);
+              return (
+                <label
+                  key={f.id}
+                  className={`flex items-center gap-2.5 rounded-lg px-2 py-1.5 cursor-pointer transition-colors ${
+                    checked ? "bg-primary/10" : "hover:bg-muted"
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    className="accent-primary h-4 w-4"
+                    checked={checked}
+                    onChange={() => toggle(f.id)}
+                  />
+                  <div className="w-7 h-7 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold select-none shrink-0">
+                    {(f.nickname || f.username)?.[0]?.toUpperCase() || "?"}
+                  </div>
+                  <span className="text-sm font-medium truncate">
+                    {f.nickname || f.username}
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+          <Button
+            size="sm"
+            className="w-full gap-1.5"
+            disabled={selected.length === 0 || mutation.isPending}
+            onClick={() => mutation.mutate()}
+          >
+            <UserPlus className="h-3.5 w-3.5" />
+            {mutation.isPending
+              ? "Adding…"
+              : `Add ${selected.length} Friend${selected.length !== 1 ? "s" : ""}`}
+          </Button>
+        </>
+      )}
     </div>
   );
 }

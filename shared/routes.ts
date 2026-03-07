@@ -17,8 +17,12 @@ export const api = {
   friends: {
     list: "/api/friends",
   },
+  unread: {
+    counts: "/api/unread-counts",
+  },
   friendRequests: {
     list: "/api/friend-requests",
+    outgoing: "/api/friend-requests/outgoing",
     count: "/api/friend-requests/count",
     create: "/api/friend-requests",
     update: (id: number) => `/api/friend-requests/${id}`,
@@ -33,6 +37,7 @@ export const api = {
     rename: (id: string) => `/api/rooms/${id}`,
     messages: (id: string) => `/api/rooms/${id}/messages`,
     members: (id: string) => `/api/rooms/${id}/members`,
+    addMembers: (id: string) => `/api/rooms/${id}/add-members`,
     stats: (id: string) => `/api/rooms/${id}/stats`,
   },
   direct: {

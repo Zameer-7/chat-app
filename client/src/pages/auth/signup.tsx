@@ -178,6 +178,18 @@ export default function SignupPage() {
           </p>
         </form>
       </div>
+
+      {/* Footer */}
+      <footer className="mt-6 text-center text-xs text-gray-500 space-y-1 pb-4">
+        <p>© {new Date().getFullYear()} Vibely — Real-time chat, made simple.</p>
+        <div className="flex items-center justify-center gap-3">
+          <span className="hover:text-gray-700 cursor-default">Privacy Policy</span>
+          <span>·</span>
+          <span className="hover:text-gray-700 cursor-default">Terms of Service</span>
+          <span>·</span>
+          <span className="hover:text-gray-700 cursor-default">Contact</span>
+        </div>
+      </footer>
     </div>
   );
 }

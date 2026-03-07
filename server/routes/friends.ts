@@ -10,8 +10,23 @@ export function registerFriendRoutes(app: Express) {
     return res.json(friends.rows);
   });
 
+  app.get("/api/unread-counts", authMiddleware, async (req: AuthedRequest, res) => {
+    const counts = await repository.getUnreadCounts(req.user!.userId);
+    const frResult = await repository.listIncomingFriendRequests(req.user!.userId);
+    return res.json({
+      dm: counts.dm,
+      rooms: counts.rooms,
+      friendRequests: frResult.rows.length,
+    });
+  });
+
   app.get("/api/friend-requests", authMiddleware, async (req: AuthedRequest, res) => {
     const requests = await repository.listIncomingFriendRequests(req.user!.userId);
+    return res.json(requests.rows);
+  });
+
+  app.get("/api/friend-requests/outgoing", authMiddleware, async (req: AuthedRequest, res) => {
+    const requests = await repository.listOutgoingFriendRequests(req.user!.userId);
     return res.json(requests.rows);
   });
 
@@ -61,6 +76,14 @@ export function registerFriendRoutes(app: Express) {
     const updated = await repository.updateFriendRequestStatus(id, req.user!.userId, parsed.data.status);
     if (!updated) {
       return res.status(404).json({ message: "Friend request not found" });
+    }
+
+    // Notify the sender in real-time when their request is accepted
+    if (parsed.data.status === "accepted") {
+      emitToUser(updated.senderId, {
+        type: "friend_request_accepted",
+        request: updated,
+      });
     }
 
     return res.json(updated);

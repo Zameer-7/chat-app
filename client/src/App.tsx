@@ -98,6 +98,7 @@ function GlobalEvents() {
     if (lastEvent.type === "friend_request_received") {
       queryClient.invalidateQueries({ queryKey: ["friend-requests"] });
       queryClient.invalidateQueries({ queryKey: ["friend-requests-count"] });
+      queryClient.invalidateQueries({ queryKey: ["unread-counts"] });
       if (notifPermission === "granted") {
         new Notification("Friend Request \u2022 Vibely", {
           body: `${lastEvent.senderNickname} sent you a friend request`,
@@ -105,6 +106,14 @@ function GlobalEvents() {
           tag: "friend-request",
         });
       }
+      // Play notification sound
+      try { new Audio("/notification.wav").play(); } catch {}
+    }
+
+    if (lastEvent.type === "friend_request_accepted") {
+      queryClient.invalidateQueries({ queryKey: ["friends"] });
+      queryClient.invalidateQueries({ queryKey: ["outgoing-friend-requests"] });
+      queryClient.invalidateQueries({ queryKey: ["friend-requests-count"] });
     }
 
     // Show foreground notification for incoming DMs when not in that chat
@@ -114,6 +123,8 @@ function GlobalEvents() {
     ) {
       const isInChat = location.startsWith(`/dm/${lastEvent.senderId}`);
       const isHidden = document.hidden;
+      // Update unread counts for sidebar badges
+      queryClient.invalidateQueries({ queryKey: ["unread-counts"] });
       if (!isInChat || isHidden) {
         if (notifPermission === "granted") {
           const preview =
@@ -128,7 +139,43 @@ function GlobalEvents() {
             tag: `dm-${lastEvent.senderId}`,
           });
         }
+        // Play notification sound
+        try { new Audio("/notification.wav").play(); } catch {}
       }
+    }
+
+    // Room message notification when not viewing that room
+    if (
+      lastEvent.type === "room_message" &&
+      lastEvent.senderId !== user.id
+    ) {
+      queryClient.invalidateQueries({ queryKey: ["unread-counts"] });
+      const isInRoom = location.startsWith(`/rooms/${lastEvent.roomId}`);
+      if (!isInRoom) {
+        try { new Audio("/notification.wav").play(); } catch {}
+      }
+    }
+
+    // User joined/left room — refresh member lists
+    if (lastEvent.type === "user_joined" || lastEvent.type === "user_left") {
+      if (lastEvent.roomId) {
+        queryClient.invalidateQueries({ queryKey: ["room-members", lastEvent.roomId] });
+        queryClient.invalidateQueries({ queryKey: ["room-stats", lastEvent.roomId] });
+      }
+    }
+
+    // Room invite — refresh joined rooms
+    if (lastEvent.type === "room_invite") {
+      queryClient.invalidateQueries({ queryKey: ["joined-rooms"] });
+      queryClient.invalidateQueries({ queryKey: ["joinedRooms"] });
+      if (notifPermission === "granted") {
+        new Notification("Room Invite \u2022 Vibely", {
+          body: `You were added to ${lastEvent.roomName || "a room"}`,
+          icon: "/vibely-icon.svg",
+          tag: `room-invite-${lastEvent.roomId}`,
+        });
+      }
+      try { new Audio("/notification.wav").play(); } catch {}
     }
   }, [lastEvent, user, queryClient, location, notifPermission]);
 

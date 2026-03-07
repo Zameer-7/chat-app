@@ -67,6 +67,13 @@ export function getRoomMembers(roomId: string) {
   return authFetch<RoomMember[]>(api.rooms.members(roomId));
 }
 
+export function addMembersToRoom(roomId: string, userIds: number[]) {
+  return authFetch<{ added: number }>(api.rooms.addMembers(roomId), {
+    method: "POST",
+    body: JSON.stringify({ userIds }),
+  });
+}
+
 export function getJoinedRooms() {
   return authFetch<JoinedRoom[]>(api.rooms.joined);
 }
@@ -102,6 +109,16 @@ export function getFriends() {
   return authFetch<Friend[]>(api.friends.list);
 }
 
+export type UnreadCounts = {
+  dm: Array<{ friendId: number; count: number }>;
+  rooms: Array<{ roomId: string; count: number }>;
+  friendRequests: number;
+};
+
+export function getUnreadCounts() {
+  return authFetch<UnreadCounts>(api.unread.counts);
+}
+
 export function searchUsers(q: string) {
   const params = new URLSearchParams({ q });
   return authFetch<Friend[]>(`${api.users.search}?${params.toString()}`);
@@ -116,6 +133,21 @@ export function sendFriendRequest(receiverId: number) {
 
 export function getFriendRequests() {
   return authFetch<FriendRequest[]>(api.friendRequests.list);
+}
+
+export type OutgoingRequest = {
+  id: number;
+  senderId: number;
+  receiverId: number;
+  status: string;
+  createdAt: string;
+  receiverNickname: string;
+  receiverUsername: string;
+  receiverAvatarUrl?: string | null;
+};
+
+export function getOutgoingFriendRequests() {
+  return authFetch<OutgoingRequest[]>(api.friendRequests.outgoing);
 }
 
 export function respondToFriendRequest(id: number, status: "accepted" | "rejected") {

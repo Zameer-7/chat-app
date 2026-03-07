@@ -289,6 +289,25 @@ export const repository = {
     return Boolean(membership);
   },
 
+  async addMembersToRoom(roomId: string, userIds: number[]) {
+    const added: number[] = [];
+    for (const userId of userIds) {
+      const [existing] = await db
+        .select()
+        .from(userRooms)
+        .where(and(eq(userRooms.userId, userId), eq(userRooms.roomId, roomId)));
+      if (existing && !existing.leftAt) continue; // already active member
+      if (existing && existing.leftAt) {
+        await db.update(userRooms).set({ leftAt: null }).where(eq(userRooms.id, existing.id));
+        added.push(userId);
+      } else {
+        await db.insert(userRooms).values({ userId, roomId });
+        added.push(userId);
+      }
+    }
+    return added;
+  },
+
   async getJoinedRooms(userId: number) {
     return db.execute(sql`
       select ur.room_id as "roomId", ur.joined_at as "joinedAt", ur.left_at as "leftAt",
@@ -421,6 +440,17 @@ export const repository = {
     `);
   },
 
+  async listOutgoingFriendRequests(userId: number) {
+    return db.execute(sql`
+      select fr.id, fr.sender_id as "senderId", fr.receiver_id as "receiverId", fr.status, fr.created_at as "createdAt",
+             u.nickname as "receiverNickname", u.username as "receiverUsername", u.avatar_url as "receiverAvatarUrl"
+      from friend_requests fr
+      join users u on u.id = fr.receiver_id
+      where fr.sender_id = ${userId} and fr.status = 'pending'
+      order by fr.created_at desc
+    `);
+  },
+
   async updateFriendRequestStatus(requestId: number, userId: number, status: "accepted" | "rejected") {
     const [req] = await db
       .select()
@@ -443,6 +473,38 @@ export const repository = {
       where (fr.sender_id = ${userId} or fr.receiver_id = ${userId}) and fr.status = 'accepted'
       order by u.nickname asc
     `);
+  },
+
+  async getUnreadCounts(userId: number) {
+    // Unread DMs per friend (messages sent TO this user that are not 'seen' and not hidden)
+    const dmResult = await db.execute(sql`
+      select m.sender_id as "friendId", count(*)::int as "count"
+      from messages m
+      where m.receiver_id = ${userId}
+        and m.sender_id != ${userId}
+        and m.status != 'seen'
+        and m.deleted = false
+        and not exists (select 1 from message_hidden mh where mh.message_id = m.id and mh.user_id = ${userId})
+      group by m.sender_id
+    `);
+
+    // Unread room messages: messages in rooms user is active member of, not sent by user, not seen
+    const roomResult = await db.execute(sql`
+      select m.room_id as "roomId", count(*)::int as "count"
+      from messages m
+      join user_rooms ur on ur.room_id = m.room_id and ur.user_id = ${userId} and ur.left_at is null
+      where m.sender_id != ${userId}
+        and m.status != 'seen'
+        and m.deleted = false
+        and m.created_at > ur.joined_at
+        and not exists (select 1 from message_hidden mh where mh.message_id = m.id and mh.user_id = ${userId})
+      group by m.room_id
+    `);
+
+    return {
+      dm: dmResult.rows as Array<{ friendId: number; count: number }>,
+      rooms: roomResult.rows as Array<{ roomId: string; count: number }>,
+    };
   },
 
   async areFriends(userId: number, otherUserId: number) {

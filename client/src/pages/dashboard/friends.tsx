@@ -4,7 +4,7 @@ import { useLocation } from "wouter";
 import { Archive, MessageCircle, UserPlus } from "lucide-react";
 import { wsPaths } from "@shared/routes";
 import { useSocket } from "@/hooks/use-socket";
-import { getFriends, getChatSettings, type Friend, type ChatSetting } from "@/services/chat-api";
+import { getFriends, getChatSettings, getUnreadCounts, type Friend, type ChatSetting } from "@/services/chat-api";
 import { Button } from "@/components/ui/button";
 
 function getInitials(name?: string) {
@@ -68,10 +68,12 @@ export default function FriendsPage() {
   const [, setLocation] = useLocation();
   const { data: friends = [], isLoading } = useQuery({ queryKey: ["friends"], queryFn: getFriends });
   const { data: chatSettingsList = [] } = useQuery({ queryKey: ["chat-settings"], queryFn: getChatSettings });
+  const { data: unread } = useQuery({ queryKey: ["unread-counts"], queryFn: getUnreadCounts, refetchInterval: 15_000 });
   const [showArchived, setShowArchived] = useState(false);
 
   const archivedFriendIds = new Set(chatSettingsList.filter((s: ChatSetting) => s.friendId && s.archived).map((s: ChatSetting) => s.friendId));
   const mutedFriendIds = new Set(chatSettingsList.filter((s: ChatSetting) => s.friendId && s.muted).map((s: ChatSetting) => s.friendId));
+  const dmUnreadMap = new Map((unread?.dm ?? []).map((d) => [d.friendId, d.count]));
   const activeFriends = friends.filter((f) => !archivedFriendIds.has(f.id));
   const archivedFriends = friends.filter((f) => archivedFriendIds.has(f.id));
 
@@ -139,6 +141,7 @@ export default function FriendsPage() {
               const online = isOnline(friend);
               const lastSeen = !online && friend.lastSeen ? formatLastSeen(friend.lastSeen) : null;
               const muted = mutedFriendIds.has(friend.id);
+              const unreadCount = dmUnreadMap.get(friend.id) ?? 0;
 
               return (
                 <div
@@ -159,6 +162,11 @@ export default function FriendsPage() {
                       <div className="flex items-center gap-1.5">
                         <p className="truncate font-semibold leading-tight">{friend.nickname || friend.username}</p>
                         {muted && <span className="text-sm" title="Muted">🔕</span>}
+                        {unreadCount > 0 && (
+                          <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[11px] font-bold text-white">
+                            {unreadCount > 99 ? "99+" : unreadCount}
+                          </span>
+                        )}
                       </div>
                     <p className="truncate text-xs text-muted-foreground">@{friend.username}</p>
                     <div className="mt-1 flex items-center gap-1.5">
