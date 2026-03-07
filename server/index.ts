@@ -37,6 +37,21 @@ app.use((req, res, next) => {
   next();
 });
 
+app.get("/health", (_req, res) => {
+  return res.json({ status: "ok", service: "Vibely API" });
+});
+
+app.get("/", (req, res, next) => {
+  if (req.hostname.includes("onrender.com")) {
+    return res
+      .status(200)
+      .type("text/plain")
+      .send("Vibely API is running. Use /health for a JSON status response.");
+  }
+
+  return next();
+});
+
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {
     hour: "numeric",
