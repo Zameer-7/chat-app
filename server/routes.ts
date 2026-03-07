@@ -9,6 +9,7 @@ import { registerPushRoutes } from "./routes/push";
 import { registerRoomRoutes } from "./routes/rooms";
 import { registerSettingsRoutes } from "./routes/settings";
 import { registerUserRoutes } from "./routes/users";
+import { registerChatSettingsRoutes } from "./routes/chat-settings";
 import { registerWebSocket } from "./websocket";
 import { pool } from "./db";
 
@@ -42,6 +43,21 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       END IF;
     END; $$;
   `);
+  // Chat settings table for archive & mute per-user per-chat
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS chat_settings (
+      id SERIAL PRIMARY KEY,
+      user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      room_id VARCHAR,
+      friend_id INT,
+      archived BOOLEAN NOT NULL DEFAULT false,
+      muted BOOLEAN NOT NULL DEFAULT false,
+      mute_until TIMESTAMP,
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `);
+  await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_chat_settings_user_room ON chat_settings(user_id, room_id) WHERE room_id IS NOT NULL`);
+  await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_chat_settings_user_friend ON chat_settings(user_id, friend_id) WHERE friend_id IS NOT NULL`);
 
   registerAuthRoutes(app);
   registerUserRoutes(app);
@@ -51,6 +67,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   registerRoomRoutes(app);
   registerDirectMessageRoutes(app);
   registerMessageRoutes(app);
+  registerChatSettingsRoutes(app);
   registerPushRoutes(app);
 
   registerWebSocket(httpServer);

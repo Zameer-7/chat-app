@@ -37,6 +37,17 @@ export const api = {
   },
   direct: {
     messages: (friendId: number) => `/api/direct/${friendId}/messages`,
+    deleteChat: (friendId: number) => `/api/direct/${friendId}/delete-chat`,
+  },
+  chatSettings: {
+    get: "/api/chat-settings",
+    archive: "/api/chat-settings/archive",
+    unarchive: "/api/chat-settings/unarchive",
+    mute: "/api/chat-settings/mute",
+    unmute: "/api/chat-settings/unmute",
+  },
+  bulkMessages: {
+    delete: "/api/messages/bulk-delete",
   },
   profile: {
     me: "/api/profile/me",

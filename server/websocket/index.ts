@@ -217,19 +217,22 @@ export function registerWebSocket(server: Server) {
               status: "delivered",
             });
           } else {
-            // Receiver is offline — send background push notification
-            const preview =
-              msg.messageType === "gif"
-                ? "Sent a GIF 🎞️"
-                : msg.messageType === "image"
-                  ? "Sent an image 🖼️"
-                  : (msg.content || "").slice(0, 120);
-            sendPushNotification(friendId, {
-              title: "New Message — Vibely",
-              body: `${msg.senderNickname}: ${preview}`,
-              url: `/dm/${user.userId}`,
-              tag: `dm-${user.userId}`,
-            }).catch(() => {});
+            // Receiver is offline — send background push notification (check mute first)
+            const isMuted = await repository.isChatMuted(friendId, { friendId: user.userId });
+            if (!isMuted) {
+              const preview =
+                msg.messageType === "gif"
+                  ? "Sent a GIF 🎞️"
+                  : msg.messageType === "image"
+                    ? "Sent an image 🖼️"
+                    : (msg.content || "").slice(0, 120);
+              sendPushNotification(friendId, {
+                title: "New Message — Vibely",
+                body: `${msg.senderNickname}: ${preview}`,
+                url: `/dm/${user.userId}`,
+                tag: `dm-${user.userId}`,
+              }).catch(() => {});
+            }
           }
 
           const receiverActiveWithSender = directSubscribers.get(user.userId)?.has(friendId);

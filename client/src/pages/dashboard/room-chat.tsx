@@ -1,7 +1,7 @@
 ﻿import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation, useRoute } from "wouter";
-import { ArrowLeft, Check, Crown, Image, Info, Link2, Pencil, Reply, Search, Users, X } from "lucide-react";
+import { ArrowLeft, Archive, BellOff, Check, Crown, Image, Info, Link2, MoreVertical, Pencil, Reply, Search, Users, X } from "lucide-react";
 import { wsPaths } from "@shared/routes";
 import { useAuth } from "@/hooks/use-auth";
 import { useSocket } from "@/hooks/use-socket";
@@ -19,7 +19,14 @@ import {
   leaveRoom,
   renameRoom,
   searchMessages,
+  bulkDeleteMessages,
+  archiveChat,
+  unarchiveChat,
+  muteChat,
+  unmuteChat,
+  getChatSettings,
   type ChatMessage,
+  type ChatSetting,
 } from "@/services/chat-api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -56,6 +63,30 @@ export default function RoomChatPage() {
   const imageInputRef = useRef<HTMLInputElement>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [showChatMenu, setShowChatMenu] = useState(false);
+  const [showMuteOptions, setShowMuteOptions] = useState(false);
+  const chatMenuRef = useRef<HTMLDivElement>(null);
+
+  const { data: chatSettingsList = [] } = useQuery({
+    queryKey: ["chat-settings"],
+    queryFn: getChatSettings,
+  });
+  const mySetting = chatSettingsList.find((s: ChatSetting) => s.roomId === roomId);
+  const isArchived = mySetting?.archived ?? false;
+  const isMuted = mySetting?.muted ?? false;
+
+  // Close chat menu on outside click
+  useEffect(() => {
+    if (!showChatMenu) return;
+    const handle = (e: MouseEvent) => {
+      if (chatMenuRef.current && !chatMenuRef.current.contains(e.target as Node)) {
+        setShowChatMenu(false);
+        setShowMuteOptions(false);
+      }
+    };
+    document.addEventListener("mousedown", handle);
+    return () => document.removeEventListener("mousedown", handle);
+  }, [showChatMenu]);
 
   const PAGE_SIZE = 30;
 
@@ -466,6 +497,71 @@ export default function RoomChatPage() {
             <Button variant={showMembers ? "secondary" : "ghost"} size="sm" onClick={() => setShowMembers((s) => !s)} title="Members">
               <Users className="h-4 w-4" />
             </Button>
+            {isMuted && <span className="text-sm" title="Muted">🔕</span>}
+            {isArchived && <span className="text-sm" title="Archived">📦</span>}
+            {/* Chat options menu */}
+            <div className="relative" ref={chatMenuRef}>
+              <Button variant={showChatMenu ? "secondary" : "ghost"} size="sm" onClick={() => { setShowChatMenu((s) => !s); setShowMuteOptions(false); }} title="Chat options">
+                <MoreVertical className="h-4 w-4" />
+              </Button>
+              {showChatMenu && (
+                <div className="absolute right-0 top-full mt-1 w-48 rounded-lg border bg-card shadow-lg z-50">
+                  {!showMuteOptions ? (
+                    <button
+                      type="button"
+                      className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted text-left"
+                      onClick={() => {
+                        if (isMuted) {
+                          unmuteChat({ roomId }).then(() => {
+                            queryClient.invalidateQueries({ queryKey: ["chat-settings"] });
+                            toast({ title: "Chat unmuted" });
+                            setShowChatMenu(false);
+                          });
+                        } else {
+                          setShowMuteOptions(true);
+                        }
+                      }}
+                    >
+                      <BellOff className="h-4 w-4" /> {isMuted ? "Unmute chat" : "Mute chat"}
+                    </button>
+                  ) : (
+                    <div className="px-1 py-1 space-y-0.5">
+                      {([["1h", "1 hour"], ["8h", "8 hours"], ["1w", "1 week"], ["forever", "Forever"]] as const).map(([val, label]) => (
+                        <button
+                          key={val}
+                          type="button"
+                          className="w-full px-3 py-1.5 text-xs hover:bg-muted rounded text-left"
+                          onClick={() => {
+                            muteChat({ roomId, duration: val }).then(() => {
+                              queryClient.invalidateQueries({ queryKey: ["chat-settings"] });
+                              toast({ title: `Chat muted for ${label.toLowerCase()}` });
+                              setShowChatMenu(false);
+                              setShowMuteOptions(false);
+                            });
+                          }}
+                        >
+                          Mute {label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted text-left"
+                    onClick={() => {
+                      const fn = isArchived ? unarchiveChat : archiveChat;
+                      fn({ roomId }).then(() => {
+                        queryClient.invalidateQueries({ queryKey: ["chat-settings"] });
+                        toast({ title: isArchived ? "Room unarchived" : "Room archived" });
+                        setShowChatMenu(false);
+                      });
+                    }}
+                  >
+                    <Archive className="h-4 w-4" /> {isArchived ? "Unarchive room" : "Archive room"}
+                  </button>
+                </div>
+              )}
+            </div>
             {!left && (
               <Button variant="secondary" size="sm" disabled={leaveMutation.isPending} onClick={() => leaveMutation.mutate()}>
                 Leave
@@ -593,6 +689,20 @@ export default function RoomChatPage() {
         isLoadingMore={isFetchingNextPage}
         hasMore={hasNextPage !== false}
         typingUsers={typingUsers}
+        onBulkDelete={async (ids, scope) => {
+          try {
+            await bulkDeleteMessages(ids, scope);
+            if (scope === "me") {
+              setLiveMessages((prev) => prev.filter((m) => !ids.includes(m.id)));
+            } else {
+              setLiveMessages((prev) => prev.map((m) => ids.includes(m.id) ? { ...m, deleted: true, content: "This message was deleted" } : m));
+            }
+            queryClient.invalidateQueries({ queryKey: ["room-messages", roomId] });
+            toast({ title: `${ids.length} message${ids.length > 1 ? "s" : ""} deleted` });
+          } catch (err: any) {
+            toast({ title: err.message || "Failed to delete messages", variant: "destructive" });
+          }
+        }}
       />
 
       {/* Left-room banner */}

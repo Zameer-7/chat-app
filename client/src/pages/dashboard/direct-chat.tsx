@@ -1,15 +1,16 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRoute, useLocation } from "wouter";
-import { ArrowLeft, Image, Reply, Search, X } from "lucide-react";
+import { ArrowLeft, Archive, BellOff, Image, MoreVertical, Reply, Search, Trash2, X } from "lucide-react";
 import { wsPaths } from "@shared/routes";
 import { useAuth } from "@/hooks/use-auth";
 import { useSocket } from "@/hooks/use-socket";
 import { ChatWindow } from "@/components/chat/chat-window";
-import { getDirectMessages, getFriends, searchMessages, type ChatMessage } from "@/services/chat-api";
+import { getDirectMessages, getFriends, searchMessages, bulkDeleteMessages, deleteDirectChat, archiveChat, unarchiveChat, muteChat, unmuteChat, getChatSettings, type ChatMessage, type ChatSetting } from "@/services/chat-api";
 import { uploadImage } from "@/services/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useToast } from "@/hooks/use-toast";
 const EmojiPicker = lazy(() => import("emoji-picker-react"));
 
 export default function DirectChatPage() {
@@ -17,6 +18,8 @@ export default function DirectChatPage() {
   const friendId = Number(params?.friendId || 0);
   const { user } = useAuth();
   const [, setLocation] = useLocation();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [text, setText] = useState("");
   const [showEmoji, setShowEmoji] = useState(false);
   const [showGif, setShowGif] = useState(false);
@@ -27,7 +30,32 @@ export default function DirectChatPage() {
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<ChatMessage[]>([]);
+  const [showChatMenu, setShowChatMenu] = useState(false);
+  const [showMuteOptions, setShowMuteOptions] = useState(false);
+  const [confirmDeleteChat, setConfirmDeleteChat] = useState(false);
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const chatMenuRef = useRef<HTMLDivElement>(null);
+
+  const { data: chatSettingsList = [] } = useQuery({
+    queryKey: ["chat-settings"],
+    queryFn: getChatSettings,
+  });
+  const mySetting = chatSettingsList.find((s: ChatSetting) => s.friendId === friendId);
+  const isArchived = mySetting?.archived ?? false;
+  const isMuted = mySetting?.muted ?? false;
+
+  // Close chat menu on outside click
+  useEffect(() => {
+    if (!showChatMenu) return;
+    const handle = (e: MouseEvent) => {
+      if (chatMenuRef.current && !chatMenuRef.current.contains(e.target as Node)) {
+        setShowChatMenu(false);
+        setShowMuteOptions(false);
+      }
+    };
+    document.addEventListener("mousedown", handle);
+    return () => document.removeEventListener("mousedown", handle);
+  }, [showChatMenu]);
 
   const { data: friends = [] } = useQuery({ queryKey: ["friends"], queryFn: getFriends });
   const friend = friends.find((f) => f.id === friendId);
@@ -233,6 +261,8 @@ export default function DirectChatPage() {
         <div className="flex items-center gap-2 shrink-0">
           <span className={`w-2.5 h-2.5 rounded-full ${friend?.isOnline ? "bg-green-500" : "bg-gray-400"}`} />
           <span className="text-sm text-muted-foreground hidden sm:inline">{friend?.isOnline ? "Online" : "Offline"}</span>
+          {isMuted && <span className="text-sm" title="Muted">🔕</span>}
+          {isArchived && <span className="text-sm" title="Archived">📦</span>}
           <button
             type="button"
             className="min-h-[44px] min-w-[44px] flex items-center justify-center text-muted-foreground hover:text-foreground touch-manipulation"
@@ -241,6 +271,119 @@ export default function DirectChatPage() {
           >
             <Search className="h-4 w-4" />
           </button>
+          {/* Chat options menu */}
+          <div className="relative" ref={chatMenuRef}>
+            <button
+              type="button"
+              className="min-h-[44px] min-w-[44px] flex items-center justify-center text-muted-foreground hover:text-foreground touch-manipulation"
+              title="Chat options"
+              onClick={() => { setShowChatMenu((s) => !s); setShowMuteOptions(false); }}
+            >
+              <MoreVertical className="h-4 w-4" />
+            </button>
+            {showChatMenu && (
+              <div className="absolute right-0 top-full mt-1 w-48 rounded-lg border bg-card shadow-lg z-50">
+                <button
+                  type="button"
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted text-left"
+                  onClick={() => { setShowSearch(true); setShowChatMenu(false); }}
+                >
+                  <Search className="h-4 w-4" /> Search messages
+                </button>
+                {!showMuteOptions ? (
+                  <button
+                    type="button"
+                    className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted text-left"
+                    onClick={() => {
+                      if (isMuted) {
+                        unmuteChat({ friendId }).then(() => {
+                          queryClient.invalidateQueries({ queryKey: ["chat-settings"] });
+                          toast({ title: "Chat unmuted" });
+                          setShowChatMenu(false);
+                        });
+                      } else {
+                        setShowMuteOptions(true);
+                      }
+                    }}
+                  >
+                    <BellOff className="h-4 w-4" /> {isMuted ? "Unmute chat" : "Mute chat"}
+                  </button>
+                ) : (
+                  <div className="px-1 py-1 space-y-0.5">
+                    {([["1h", "1 hour"], ["8h", "8 hours"], ["1w", "1 week"], ["forever", "Forever"]] as const).map(([val, label]) => (
+                      <button
+                        key={val}
+                        type="button"
+                        className="w-full px-3 py-1.5 text-xs hover:bg-muted rounded text-left"
+                        onClick={() => {
+                          muteChat({ friendId, duration: val }).then(() => {
+                            queryClient.invalidateQueries({ queryKey: ["chat-settings"] });
+                            toast({ title: `Chat muted for ${label.toLowerCase()}` });
+                            setShowChatMenu(false);
+                            setShowMuteOptions(false);
+                          });
+                        }}
+                      >
+                        Mute {label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <button
+                  type="button"
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted text-left"
+                  onClick={() => {
+                    const fn = isArchived ? unarchiveChat : archiveChat;
+                    fn({ friendId }).then(() => {
+                      queryClient.invalidateQueries({ queryKey: ["chat-settings"] });
+                      toast({ title: isArchived ? "Chat unarchived" : "Chat archived" });
+                      setShowChatMenu(false);
+                      if (!isArchived) setLocation("/friends");
+                    });
+                  }}
+                >
+                  <Archive className="h-4 w-4" /> {isArchived ? "Unarchive chat" : "Archive chat"}
+                </button>
+                {!confirmDeleteChat ? (
+                  <button
+                    type="button"
+                    className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted text-left text-destructive"
+                    onClick={() => setConfirmDeleteChat(true)}
+                  >
+                    <Trash2 className="h-4 w-4" /> Delete chat
+                  </button>
+                ) : (
+                  <div className="px-3 py-2 space-y-1.5">
+                    <p className="text-xs text-muted-foreground">Delete entire chat?</p>
+                    <div className="flex gap-1.5">
+                      <button
+                        type="button"
+                        className="rounded bg-destructive text-destructive-foreground px-2 py-1 text-xs font-medium"
+                        onClick={() => {
+                          deleteDirectChat(friendId).then(() => {
+                            queryClient.invalidateQueries({ queryKey: ["dm-messages", friendId] });
+                            toast({ title: "Chat deleted" });
+                            setShowChatMenu(false);
+                            setConfirmDeleteChat(false);
+                            setLocation("/friends");
+                          });
+                        }}
+                      >
+                        Yes, delete
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded bg-secondary text-secondary-foreground px-2 py-1 text-xs font-medium"
+                        onClick={() => setConfirmDeleteChat(false)}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -292,6 +435,20 @@ export default function DirectChatPage() {
         onReply={(message) => setReplyTo(message)}
         onEdit={(messageId, content) => send({ type: "message_edit", messageId, content })}
         typingUsers={typingUsers}
+        onBulkDelete={async (ids, scope) => {
+          try {
+            await bulkDeleteMessages(ids, scope);
+            if (scope === "me") {
+              setLiveMessages((prev) => prev.filter((m) => !ids.includes(m.id)));
+            } else {
+              setLiveMessages((prev) => prev.map((m) => ids.includes(m.id) ? { ...m, deleted: true, content: "This message was deleted" } : m));
+            }
+            queryClient.invalidateQueries({ queryKey: ["dm-messages", friendId] });
+            toast({ title: `${ids.length} message${ids.length > 1 ? "s" : ""} deleted` });
+          } catch (err: any) {
+            toast({ title: err.message || "Failed to delete messages", variant: "destructive" });
+          }
+        }}
       />
 
       {/* Sticky bottom: emoji, GIF, reply preview, form */}

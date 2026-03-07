@@ -82,6 +82,17 @@ export const messageReactions = pgTable("message_reactions", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+export const chatSettings = pgTable("chat_settings", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id),
+  roomId: varchar("room_id"),
+  friendId: integer("friend_id"),
+  archived: boolean("archived").notNull().default(false),
+  muted: boolean("muted").notNull().default(false),
+  muteUntil: timestamp("mute_until"),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
 export const insertUserSchema = createInsertSchema(users).pick({
   email: true,
   passwordHash: true,

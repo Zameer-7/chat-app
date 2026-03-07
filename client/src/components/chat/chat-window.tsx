@@ -1,5 +1,5 @@
 import { format } from "date-fns";
-import { ChevronDown } from "lucide-react";
+import { CheckSquare, ChevronDown, Square, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChatMessage } from "@/services/chat-api";
 
@@ -48,6 +48,7 @@ export function ChatWindow({
   isLoadingMore,
   hasMore,
   typingUsers = [],
+  onBulkDelete,
 }: {
   messages: ChatMessage[];
   currentUserId: number;
@@ -59,12 +60,15 @@ export function ChatWindow({
   isLoadingMore?: boolean;
   hasMore?: boolean;
   typingUsers?: string[];
+  onBulkDelete?: (messageIds: number[], scope: "me" | "everyone") => void;
 }) {
   const [menu, setMenu] = useState<MenuState>(null);
   const [reactionMenu, setReactionMenu] = useState<ReactionMenuState>(null);
   const [atBottom, setAtBottom] = useState(true);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editContent, setEditContent] = useState("");
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
   const prevScrollHeightRef = useRef<number>(0);
   const isInitialLoadRef = useRef(true);
@@ -166,8 +170,71 @@ export function ChatWindow({
     setReactionMenu(null);
   };
 
+  const toggleSelect = useCallback((id: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const exitSelection = useCallback(() => {
+    setSelectionMode(false);
+    setSelectedIds(new Set());
+  }, []);
+
+  const allSelectedOwned = useMemo(() => {
+    if (selectedIds.size === 0) return false;
+    return Array.from(selectedIds).every((id) => {
+      const m = messages.find((msg) => msg.id === id);
+      return m && m.senderId === currentUserId && !m.deleted;
+    });
+  }, [selectedIds, messages, currentUserId]);
+
   return (
     <div className="relative" onClick={closeTransientMenus}>
+      {/* Selection mode header */}
+      {selectionMode && (
+        <div className="flex items-center justify-between gap-2 rounded-xl border bg-card px-3 py-2 mb-2 shadow-sm animate-in slide-in-from-top-2 duration-200">
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={exitSelection} className="text-muted-foreground hover:text-foreground min-h-[36px] min-w-[36px] flex items-center justify-center touch-manipulation">
+              <X className="h-4 w-4" />
+            </button>
+            <span className="text-sm font-semibold">{selectedIds.size} selected</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              disabled={selectedIds.size === 0}
+              className="rounded-lg bg-destructive/10 text-destructive hover:bg-destructive/20 px-3 py-1.5 text-xs font-medium disabled:opacity-40 transition-colors min-h-[36px] touch-manipulation"
+              onClick={() => {
+                if (selectedIds.size > 0) {
+                  onBulkDelete?.(Array.from(selectedIds), "me");
+                  exitSelection();
+                }
+              }}
+            >
+              Delete for me
+            </button>
+            {allSelectedOwned && (
+              <button
+                type="button"
+                disabled={selectedIds.size === 0}
+                className="rounded-lg bg-destructive text-destructive-foreground hover:bg-destructive/90 px-3 py-1.5 text-xs font-medium disabled:opacity-40 transition-colors min-h-[36px] touch-manipulation"
+                onClick={() => {
+                  if (selectedIds.size > 0) {
+                    onBulkDelete?.(Array.from(selectedIds), "everyone");
+                    exitSelection();
+                  }
+                }}
+              >
+                Delete for everyone
+              </button>
+            )}
+          </div>
+        </div>
+      )}
       <div ref={scrollRef} onScroll={handleScroll} className="h-[calc(100vh-200px)] md:h-[65vh] overflow-y-auto scroll-smooth rounded-2xl border bg-chat-pattern p-4 space-y-2">
         {/* Loading / end-of-history indicator */}
         {hasMore === false && messages.length > 0 && (
@@ -179,20 +246,33 @@ export function ChatWindow({
 
         {messages.map((message) => {
           const isOwn = message.senderId === currentUserId;
+          const isSelected = selectedIds.has(message.id);
 
           return (
             <div
               id={`message-${message.id}`}
               key={message.id}
-              className={`flex rounded-lg transition-colors hover:bg-gray-100 dark:hover:bg-gray-700 ${isOwn ? "justify-end" : "justify-start"}`}
+              className={`flex rounded-lg transition-colors hover:bg-gray-100 dark:hover:bg-gray-700 ${isOwn ? "justify-end" : "justify-start"} ${isSelected ? "bg-primary/10 dark:bg-primary/20" : ""}`}
+              onClick={selectionMode ? (e) => { e.stopPropagation(); toggleSelect(message.id); } : undefined}
             >
+              {/* Selection checkbox */}
+              {selectionMode && (
+                <div className="flex items-center px-1 shrink-0">
+                  {isSelected ? (
+                    <CheckSquare className="h-5 w-5 text-primary" />
+                  ) : (
+                    <Square className="h-5 w-5 text-muted-foreground" />
+                  )}
+                </div>
+              )}
               <div
                 className={`group max-w-[85%] sm:max-w-[75%] lg:max-w-[65%] rounded-2xl px-4 py-2 shadow-sm transition-transform hover:-translate-y-0.5 ${
                   isOwn ? "bg-[hsl(var(--bubble-out))] rounded-tr-sm" : "bg-[hsl(var(--bubble-in))] border rounded-tl-sm"
                 }`}
                 onContextMenu={(event) => {
+                  if (selectionMode) return;
                   event.preventDefault();
-                  const position = toViewportPosition(event.clientX, event.clientY, CONTEXT_MENU_WIDTH, 164);
+                  const position = toViewportPosition(event.clientX, event.clientY, CONTEXT_MENU_WIDTH, 200);
                   setReactionMenu(null);
                   setMenu({ messageId: message.id, ...position });
                 }}
@@ -390,6 +470,17 @@ export function ChatWindow({
             }}
           >
             Delete for everyone
+          </button>
+          <button
+            type="button"
+            className="w-full px-3 py-2 text-left text-sm hover:bg-muted"
+            onClick={() => {
+              setSelectionMode(true);
+              setSelectedIds(new Set([contextMessage.id]));
+              setMenu(null);
+            }}
+          >
+            Select
           </button>
         </div>
       )}

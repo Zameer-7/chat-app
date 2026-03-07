@@ -1,6 +1,6 @@
-import { and, eq, ilike, ne, or, sql } from "drizzle-orm";
+import { and, eq, ilike, ne, or, sql, inArray } from "drizzle-orm";
 import { db } from "../db";
-import { friendRequests, messageHidden, messageReactions, messages, rooms, userRooms, users } from "@shared/schema";
+import { friendRequests, messageHidden, messageReactions, messages, rooms, userRooms, users, chatSettings } from "@shared/schema";
 
 const CHANGE_COOLDOWN_DAYS = 14;
 
@@ -661,5 +661,104 @@ export const repository = {
     await db.execute(sql`
       DELETE FROM push_subscriptions WHERE user_id = ${userId} AND endpoint = ${endpoint}
     `);
+  },
+
+  // ─── Bulk message operations ─────────────────────────────────────────
+
+  async bulkDeleteMessagesForEveryone(messageIds: number[], userId: number) {
+    // Only the sender can delete for everyone; mark as deleted for sender-owned messages
+    const result = await db.execute(sql`
+      UPDATE messages
+      SET deleted = true, content = 'This message was deleted', gif_url = NULL, message_type = 'text'
+      WHERE id = ANY(${messageIds})
+        AND sender_id = ${userId}
+        AND deleted = false
+      RETURNING id, room_id as "roomId", sender_id as "senderId", receiver_id as "receiverId"
+    `);
+    return result.rows as Array<{ id: number; roomId: string | null; senderId: number; receiverId: number | null }>;
+  },
+
+  async bulkDeleteMessagesForMe(messageIds: number[], userId: number) {
+    const existing = await db.execute(sql`
+      SELECT message_id as "messageId" FROM message_hidden
+      WHERE message_id = ANY(${messageIds}) AND user_id = ${userId}
+    `);
+    const alreadyHidden = new Set((existing.rows as Array<{ messageId: number }>).map((r) => r.messageId));
+    const toInsert = messageIds.filter((id) => !alreadyHidden.has(id));
+    if (toInsert.length > 0) {
+      const values = toInsert.map((mid) => `(${mid}, ${userId})`).join(", ");
+      await db.execute(sql.raw(`INSERT INTO message_hidden (message_id, user_id) VALUES ${values}`));
+    }
+    return messageIds;
+  },
+
+  async deleteDirectChat(userId: number, friendId: number) {
+    // Soft-hide all messages in the DM conversation for this user
+    await db.execute(sql`
+      INSERT INTO message_hidden (message_id, user_id)
+      SELECT m.id, ${userId}
+      FROM messages m
+      WHERE ((m.sender_id = ${userId} AND m.receiver_id = ${friendId})
+         OR (m.sender_id = ${friendId} AND m.receiver_id = ${userId}))
+        AND NOT EXISTS (
+          SELECT 1 FROM message_hidden mh WHERE mh.message_id = m.id AND mh.user_id = ${userId}
+        )
+    `);
+    return true;
+  },
+
+  // ─── Chat settings (archive / mute) ─────────────────────────────────
+
+  async getChatSettings(userId: number) {
+    return db.select().from(chatSettings).where(eq(chatSettings.userId, userId));
+  },
+
+  async upsertChatSetting(userId: number, key: { roomId?: string; friendId?: number }, updates: { archived?: boolean; muted?: boolean; muteUntil?: Date | null }) {
+    if (key.roomId) {
+      const [existing] = await db.select().from(chatSettings)
+        .where(and(eq(chatSettings.userId, userId), eq(chatSettings.roomId, key.roomId)));
+      if (existing) {
+        const [updated] = await db.update(chatSettings)
+          .set({ ...updates, updatedAt: new Date() })
+          .where(eq(chatSettings.id, existing.id))
+          .returning();
+        return updated;
+      }
+      const [created] = await db.insert(chatSettings)
+        .values({ userId, roomId: key.roomId, ...updates })
+        .returning();
+      return created;
+    }
+    if (key.friendId) {
+      const [existing] = await db.select().from(chatSettings)
+        .where(and(eq(chatSettings.userId, userId), eq(chatSettings.friendId, key.friendId)));
+      if (existing) {
+        const [updated] = await db.update(chatSettings)
+          .set({ ...updates, updatedAt: new Date() })
+          .where(eq(chatSettings.id, existing.id))
+          .returning();
+        return updated;
+      }
+      const [created] = await db.insert(chatSettings)
+        .values({ userId, friendId: key.friendId, ...updates })
+        .returning();
+      return created;
+    }
+    throw new Error("Either roomId or friendId must be provided");
+  },
+
+  async isChatMuted(userId: number, key: { roomId?: string; friendId?: number }): Promise<boolean> {
+    const conditions = [eq(chatSettings.userId, userId)];
+    if (key.roomId) conditions.push(eq(chatSettings.roomId, key.roomId));
+    if (key.friendId) conditions.push(eq(chatSettings.friendId, key.friendId));
+
+    const [setting] = await db.select().from(chatSettings).where(and(...conditions));
+    if (!setting || !setting.muted) return false;
+    if (setting.muteUntil && new Date(setting.muteUntil) < new Date()) {
+      // Mute has expired
+      await db.update(chatSettings).set({ muted: false, muteUntil: null, updatedAt: new Date() }).where(eq(chatSettings.id, setting.id));
+      return false;
+    }
+    return true;
   },
 };

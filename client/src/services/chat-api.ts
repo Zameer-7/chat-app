@@ -135,3 +135,63 @@ export function searchMessages(query: string, roomId?: string, friendId?: number
   if (friendId) params.set("friendId", String(friendId));
   return authFetch<ChatMessage[]>(`${api.messages.search}?${params.toString()}`);
 }
+
+// ─── Chat Settings (archive / mute) ───────────────────────────────────
+
+export type ChatSetting = {
+  id: number;
+  userId: number;
+  roomId: string | null;
+  friendId: number | null;
+  archived: boolean;
+  muted: boolean;
+  muteUntil: string | null;
+  updatedAt: string;
+};
+
+export function getChatSettings() {
+  return authFetch<ChatSetting[]>(api.chatSettings.get);
+}
+
+export function archiveChat(payload: { roomId?: string; friendId?: number }) {
+  return authFetch<ChatSetting>(api.chatSettings.archive, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function unarchiveChat(payload: { roomId?: string; friendId?: number }) {
+  return authFetch<ChatSetting>(api.chatSettings.unarchive, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function muteChat(payload: { roomId?: string; friendId?: number; duration: "1h" | "8h" | "1w" | "forever" }) {
+  return authFetch<ChatSetting>(api.chatSettings.mute, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function unmuteChat(payload: { roomId?: string; friendId?: number }) {
+  return authFetch<ChatSetting>(api.chatSettings.unmute, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+// ─── Bulk message operations ──────────────────────────────────────────
+
+export function bulkDeleteMessages(messageIds: number[], scope: "me" | "everyone") {
+  return authFetch<{ deleted?: number; hidden?: number }>(api.bulkMessages.delete, {
+    method: "POST",
+    body: JSON.stringify({ messageIds, scope }),
+  });
+}
+
+export function deleteDirectChat(friendId: number) {
+  return authFetch<{ message: string }>(api.direct.deleteChat(friendId), {
+    method: "DELETE",
+  });
+}

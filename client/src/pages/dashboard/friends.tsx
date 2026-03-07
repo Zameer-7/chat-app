@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { MessageCircle, UserPlus } from "lucide-react";
+import { Archive, MessageCircle, UserPlus } from "lucide-react";
 import { wsPaths } from "@shared/routes";
 import { useSocket } from "@/hooks/use-socket";
-import { getFriends, type Friend } from "@/services/chat-api";
+import { getFriends, getChatSettings, type Friend, type ChatSetting } from "@/services/chat-api";
 import { Button } from "@/components/ui/button";
 
 function getInitials(name?: string) {
@@ -67,6 +67,13 @@ function FriendAvatar({ friend }: { friend: Friend }) {
 export default function FriendsPage() {
   const [, setLocation] = useLocation();
   const { data: friends = [], isLoading } = useQuery({ queryKey: ["friends"], queryFn: getFriends });
+  const { data: chatSettingsList = [] } = useQuery({ queryKey: ["chat-settings"], queryFn: getChatSettings });
+  const [showArchived, setShowArchived] = useState(false);
+
+  const archivedFriendIds = new Set(chatSettingsList.filter((s: ChatSetting) => s.friendId && s.archived).map((s: ChatSetting) => s.friendId));
+  const mutedFriendIds = new Set(chatSettingsList.filter((s: ChatSetting) => s.friendId && s.muted).map((s: ChatSetting) => s.friendId));
+  const activeFriends = friends.filter((f) => !archivedFriendIds.has(f.id));
+  const archivedFriends = friends.filter((f) => archivedFriendIds.has(f.id));
 
   const [onlineOverrides, setOnlineOverrides] = useState<Map<number, boolean>>(new Map());
   const wsPath = useCallback((token: string) => wsPaths.user(token), []);
@@ -126,28 +133,33 @@ export default function FriendsPage() {
       )}
 
       {!isLoading && friends.length > 0 && (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {friends.map((friend) => {
-            const online = isOnline(friend);
-            const lastSeen = !online && friend.lastSeen ? formatLastSeen(friend.lastSeen) : null;
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {activeFriends.map((friend) => {
+              const online = isOnline(friend);
+              const lastSeen = !online && friend.lastSeen ? formatLastSeen(friend.lastSeen) : null;
+              const muted = mutedFriendIds.has(friend.id);
 
-            return (
-              <div
-                key={friend.id}
-                className="group relative flex flex-col gap-4 rounded-2xl border bg-card p-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="relative shrink-0">
-                    <FriendAvatar friend={friend} />
-                    <span
-                      className={`absolute bottom-0.5 right-0.5 h-3 w-3 rounded-full ring-2 ring-card ${
-                        online ? "bg-green-500" : "bg-gray-400"
-                      }`}
-                    />
-                  </div>
+              return (
+                <div
+                  key={friend.id}
+                  className="group relative flex flex-col gap-4 rounded-2xl border bg-card p-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="relative shrink-0">
+                      <FriendAvatar friend={friend} />
+                      <span
+                        className={`absolute bottom-0.5 right-0.5 h-3 w-3 rounded-full ring-2 ring-card ${
+                          online ? "bg-green-500" : "bg-gray-400"
+                        }`}
+                      />
+                    </div>
 
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate font-semibold leading-tight">{friend.nickname || friend.username}</p>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <p className="truncate font-semibold leading-tight">{friend.nickname || friend.username}</p>
+                        {muted && <span className="text-sm" title="Muted">🔕</span>}
+                      </div>
                     <p className="truncate text-xs text-muted-foreground">@{friend.username}</p>
                     <div className="mt-1 flex items-center gap-1.5">
                       <span
@@ -177,6 +189,66 @@ export default function FriendsPage() {
               </div>
             );
           })}
+        </div>
+
+        {/* Archived chats section */}
+        {archivedFriends.length > 0 && (
+          <div>
+            <button
+              type="button"
+              className="flex items-center gap-2 text-sm font-semibold text-muted-foreground hover:text-foreground mb-3 transition-colors"
+              onClick={() => setShowArchived((s) => !s)}
+            >
+              <Archive className="h-4 w-4" />
+              Archived Chats ({archivedFriends.length})
+              <span className="text-xs">{showArchived ? "▼" : "▶"}</span>
+            </button>
+            {showArchived && (
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {archivedFriends.map((friend) => {
+                  const online = isOnline(friend);
+                  const lastSeen = !online && friend.lastSeen ? formatLastSeen(friend.lastSeen) : null;
+                  const muted = mutedFriendIds.has(friend.id);
+
+                  return (
+                    <div
+                      key={friend.id}
+                      className="group relative flex flex-col gap-4 rounded-2xl border bg-card/60 p-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md opacity-75"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="relative shrink-0">
+                          <FriendAvatar friend={friend} />
+                          <span
+                            className={`absolute bottom-0.5 right-0.5 h-3 w-3 rounded-full ring-2 ring-card ${
+                              online ? "bg-green-500" : "bg-gray-400"
+                            }`}
+                          />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5">
+                            <p className="truncate font-semibold leading-tight">{friend.nickname || friend.username}</p>
+                            <span className="text-sm" title="Archived">📦</span>
+                            {muted && <span className="text-sm" title="Muted">🔕</span>}
+                          </div>
+                          <p className="truncate text-xs text-muted-foreground">@{friend.username}</p>
+                        </div>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        className="w-full gap-2 transition-opacity"
+                        onClick={() => setLocation(`/dm/${friend.id}`)}
+                      >
+                        <MessageCircle className="h-3.5 w-3.5" />
+                        Message
+                      </Button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
         </div>
       )}
     </div>
