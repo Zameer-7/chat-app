@@ -639,4 +639,27 @@ export const repository = {
     }
     return { rows: [] as unknown[] };
   },
+
+  // ─── Push subscriptions ──────────────────────────────────────────────────
+
+  async savePushSubscription(userId: number, endpoint: string, p256dh: string, auth: string) {
+    await db.execute(sql`
+      INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth)
+      VALUES (${userId}, ${endpoint}, ${p256dh}, ${auth})
+      ON CONFLICT (user_id, endpoint) DO UPDATE SET p256dh = ${p256dh}, auth = ${auth}
+    `);
+  },
+
+  async getPushSubscriptions(userId: number) {
+    const result = await db.execute(sql`
+      SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE user_id = ${userId}
+    `);
+    return result.rows as Array<{ endpoint: string; p256dh: string; auth: string }>;
+  },
+
+  async deletePushSubscription(userId: number, endpoint: string) {
+    await db.execute(sql`
+      DELETE FROM push_subscriptions WHERE user_id = ${userId} AND endpoint = ${endpoint}
+    `);
+  },
 };

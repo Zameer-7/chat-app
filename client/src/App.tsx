@@ -9,6 +9,8 @@ import { AuthProvider, useAuth } from "@/hooks/use-auth";
 import { SidebarLayout } from "@/components/layout/sidebar-layout";
 import { useSocket } from "@/hooks/use-socket";
 import { wsPaths } from "@shared/routes";
+import { usePwa } from "@/hooks/use-pwa";
+import { useToast } from "@/hooks/use-toast";
 
 import LoginPage from "@/pages/auth/login";
 import SignupPage from "@/pages/auth/signup";
@@ -56,16 +58,79 @@ function PageTitle() {
 function GlobalEvents() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const [location] = useLocation();
   const pathFactory = useCallback((token: string) => wsPaths.user(token), []);
   const { lastEvent } = useSocket(pathFactory);
+  const { canInstall, installApp, notifPermission, requestNotifications } = usePwa();
+  const { toast } = useToast();
+
+  // Ask for notification permission once user is logged in
+  useEffect(() => {
+    if (!user) return;
+    if (typeof Notification !== "undefined" && Notification.permission === "default") {
+      // Slight delay so it doesn't interrupt first load
+      const t = setTimeout(() => requestNotifications(), 3000);
+      return () => clearTimeout(t);
+    }
+  }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Show install prompt as a toast
+  useEffect(() => {
+    if (!canInstall) return;
+    toast({
+      title: "Install Vibely",
+      description: "Add Vibely to your home screen for the best experience.",
+      action: (
+        <button
+          className="rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-white hover:bg-primary/90"
+          onClick={installApp}
+        >
+          Install
+        </button>
+      ) as unknown as React.ReactElement,
+      duration: 12000,
+    });
+  }, [canInstall]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!user || !lastEvent) return;
+
     if (lastEvent.type === "friend_request_received") {
       queryClient.invalidateQueries({ queryKey: ["friend-requests"] });
       queryClient.invalidateQueries({ queryKey: ["friend-requests-count"] });
+      if (notifPermission === "granted") {
+        new Notification("Friend Request \u2022 Vibely", {
+          body: `${lastEvent.senderNickname} sent you a friend request`,
+          icon: "/vibely-icon.svg",
+          tag: "friend-request",
+        });
+      }
     }
-  }, [lastEvent, user, queryClient]);
+
+    // Show foreground notification for incoming DMs when not in that chat
+    if (
+      lastEvent.type === "direct_message" &&
+      lastEvent.senderId !== user.id
+    ) {
+      const isInChat = location.startsWith(`/dm/${lastEvent.senderId}`);
+      const isHidden = document.hidden;
+      if (!isInChat || isHidden) {
+        if (notifPermission === "granted") {
+          const preview =
+            lastEvent.messageType === "gif"
+              ? "Sent a GIF"
+              : lastEvent.messageType === "image"
+                ? "Sent an image"
+                : String(lastEvent.content || "").slice(0, 80);
+          new Notification("New Message \u2022 Vibely", {
+            body: `${lastEvent.senderNickname}: ${preview}`,
+            icon: "/vibely-icon.svg",
+            tag: `dm-${lastEvent.senderId}`,
+          });
+        }
+      }
+    }
+  }, [lastEvent, user, queryClient, location, notifPermission]);
 
   return null;
 }

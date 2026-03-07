@@ -41,6 +41,15 @@ export const userRooms = pgTable("user_rooms", {
   leftAt: timestamp("left_at"),
 });
 
+export const pushSubscriptions = pgTable("push_subscriptions", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id),
+  endpoint: text("endpoint").notNull(),
+  p256dh: text("p256dh").notNull(),
+  auth: text("auth").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 export const messages = pgTable("messages", {
   id: serial("id").primaryKey(),
   roomId: varchar("room_id"),

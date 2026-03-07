@@ -1,0 +1,40 @@
+{
+  "name": "Vibely",
+  "short_name": "Vibely",
+  "description": "Realtime social messaging platform",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0a0a0a",
+  "theme_color": "#E11D48",
+  "lang": "en-US",
+  "prefer_related_applications": false,
+  "categories": ["social", "communication"],
+  "icons": [
+    {
+      "src": "/vibely-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/favicon.png",
+      "sizes": "96x96",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Friends",
+      "url": "/friends",
+      "description": "Open Friends list"
+    },
+    {
+      "name": "Rooms",
+      "url": "/rooms",
+      "description": "Open Rooms"
+    }
+  ]
+}

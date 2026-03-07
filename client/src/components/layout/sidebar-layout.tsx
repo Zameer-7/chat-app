@@ -1,11 +1,12 @@
 import { Link, useLocation } from "wouter";
-import { Home, Users, Search, Inbox, MessageCircle, LogOut, Settings, CircleUserRound, Menu, X } from "lucide-react";
+import { Home, Users, Search, Inbox, MessageCircle, LogOut, Settings, CircleUserRound, Menu, X, Download } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { api } from "@shared/routes";
 import { authFetch } from "@/services/api";
 import { NovaLogo } from "./nova-logo";
+import { usePwa } from "@/hooks/use-pwa";
 
 const mainNav = [
   { href: "/dashboard", label: "Dashboard", icon: Home },
@@ -37,6 +38,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const [location, setLocation] = useLocation();
   const { user, logout } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const { canInstall, installApp } = usePwa();
 
   const { data: frCount } = useQuery<{ count: number }>({
     queryKey: ["friend-requests-count"],
@@ -181,7 +183,41 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
 
-      <main className="flex-1 overflow-auto p-3 lg:p-6">{children}</main>
+      <main className="flex-1 overflow-auto p-3 pb-20 lg:p-6 lg:pb-6">{children}</main>
+
+      {/* Bottom navigation bar — mobile only */}
+      <nav className="fixed bottom-0 inset-x-0 z-30 lg:hidden flex items-stretch bg-background border-t border-border shadow-lg safe-area-bottom">
+        {[
+          { href: "/dashboard", icon: Home, label: "Home" },
+          { href: "/rooms", icon: MessageCircle, label: "Rooms" },
+          { href: "/friends", icon: Users, label: "Friends" },
+          { href: "/profile", icon: CircleUserRound, label: "Profile" },
+        ].map(({ href, icon: Icon, label }) => {
+          const active = location === href || location.startsWith(`${href}/`);
+          return (
+            <Link key={href} href={href}>
+              <a
+                className={`flex-1 flex flex-col items-center justify-center gap-0.5 py-2 min-h-[56px] text-[10px] font-medium transition-colors touch-manipulation ${
+                  active ? "text-primary" : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <Icon className={`h-5 w-5 ${active ? "stroke-[2.5]" : ""}`} />
+                {label}
+              </a>
+            </Link>
+          );
+        })}
+        {canInstall && (
+          <button
+            type="button"
+            onClick={installApp}
+            className="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 min-h-[56px] text-[10px] font-medium text-muted-foreground hover:text-primary transition-colors touch-manipulation"
+          >
+            <Download className="h-5 w-5" />
+            Install
+          </button>
+        )}
+      </nav>
     </div>
   );
 }

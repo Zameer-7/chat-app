@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getToken } from "@/services/api";
+import { getWebSocketBaseUrl } from "@/config/api";
 
 type SocketStatus = "connecting" | "connected" | "disconnected";
 
@@ -22,13 +23,24 @@ export function useSocket(pathFactory: (token: string) => string) {
       return;
     }
 
-    const configuredBase = (import.meta.env.VITE_WS_BASE_URL || "").replace(/\/+$/, "");
-    const fallbackProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const wsBase = configuredBase || `${fallbackProtocol}//${window.location.host}`;
+    const wsBase = getWebSocketBaseUrl();
     const ws = new WebSocket(`${wsBase}${path}`);
     wsRef.current = ws;
 
-    ws.onopen = () => setStatus("connected");
+    ws.onopen = () => {
+      setStatus("connected");
+      // Drain offline message queue for this connection
+      const queueKey = `vibely-queue:${path}`;
+      try {
+        const queued: unknown[] = JSON.parse(localStorage.getItem(queueKey) ?? "[]");
+        if (queued.length > 0) {
+          localStorage.removeItem(queueKey);
+          queued.forEach((msg) => ws.send(JSON.stringify(msg)));
+        }
+      } catch {
+        localStorage.removeItem(`vibely-queue:${path}`);
+      }
+    };
     ws.onclose = () => setStatus("disconnected");
     ws.onerror = () => setStatus("disconnected");
     ws.onmessage = (event) => {
@@ -48,6 +60,20 @@ export function useSocket(pathFactory: (token: string) => string) {
   function send(payload: unknown) {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify(payload));
+      return;
+    }
+    // Queue message-type events when offline; skip volatile events like typing
+    const msg = payload as { type?: string };
+    if (msg?.type === "room_message" || msg?.type === "direct_message") {
+      const queueKey = `vibely-queue:${path}`;
+      try {
+        const queue: unknown[] = JSON.parse(localStorage.getItem(queueKey) ?? "[]");
+        queue.push(payload);
+        // Cap queue at 20 messages to avoid unbounded storage
+        localStorage.setItem(queueKey, JSON.stringify(queue.slice(-20)));
+      } catch {
+        // localStorage might be unavailable (private mode / quota exceeded)
+      }
     }
   }
 

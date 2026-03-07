@@ -47,6 +47,10 @@ export const api = {
     updateProfile: "/api/settings/update-profile",
     updateTheme: "/api/settings/update-theme",
   },
+  push: {
+    vapidPublicKey: "/api/push/vapid-public-key",
+    subscribe: "/api/push/subscribe",
+  },
 } as const;
 
 export const wsPaths = {

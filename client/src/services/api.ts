@@ -1,4 +1,5 @@
 import { api } from "@shared/routes";
+import { buildApiUrl } from "@/config/api";
 
 export type ChatTheme = "light" | "dark" | "ocean" | "midnight" | "love";
 
@@ -20,13 +21,6 @@ export type SafeUser = {
 export type AuthResponse = { token: string; user: SafeUser };
 
 const TOKEN_KEY = "chat_app_token";
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/+$/, "");
-
-function withApiBase(url: string) {
-  if (/^https?:\/\//i.test(url)) return url;
-  return `${API_BASE_URL}${url}`;
-}
-
 export function getToken() {
   return localStorage.getItem(TOKEN_KEY);
 }
@@ -53,7 +47,7 @@ export async function authFetch<T = unknown>(url: string, init: RequestInit = {}
     headers.set("Authorization", `Bearer ${token}`);
   }
 
-  const res = await fetch(withApiBase(url), { ...init, headers });
+  const res = await fetch(buildApiUrl(url), { ...init, headers });
   const contentType = res.headers.get("content-type") || "";
 
   if (!res.ok) {
@@ -95,7 +89,7 @@ export async function uploadImage(file: File): Promise<{ url: string }> {
   const formData = new FormData();
   formData.append("image", file);
 
-  const res = await fetch(withApiBase("/api/messages/upload-image"), {
+  const res = await fetch(buildApiUrl("/api/messages/upload-image"), {
     method: "POST",
     headers: token ? { Authorization: `Bearer ${token}` } : {},
     body: formData,

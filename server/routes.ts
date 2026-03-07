@@ -5,6 +5,7 @@ import { registerDirectMessageRoutes } from "./routes/direct";
 import { registerFriendRoutes } from "./routes/friends";
 import { registerMessageRoutes } from "./routes/messages";
 import { registerProfileRoutes } from "./routes/profile";
+import { registerPushRoutes } from "./routes/push";
 import { registerRoomRoutes } from "./routes/rooms";
 import { registerSettingsRoutes } from "./routes/settings";
 import { registerUserRoutes } from "./routes/users";
@@ -19,6 +20,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   await pool.query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS edited_at TIMESTAMP`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_messages_room_id ON messages(room_id)`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_messages_room_created ON messages(room_id, created_at)`);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS push_subscriptions (
+      id SERIAL PRIMARY KEY,
+      user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      endpoint TEXT NOT NULL,
+      p256dh TEXT NOT NULL,
+      auth TEXT NOT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      UNIQUE(user_id, endpoint)
+    )
+  `);
   // Ensure unique constraints exist for username and email
   await pool.query(`
     DO $$ BEGIN
@@ -39,6 +51,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   registerRoomRoutes(app);
   registerDirectMessageRoutes(app);
   registerMessageRoutes(app);
+  registerPushRoutes(app);
 
   registerWebSocket(httpServer);
 

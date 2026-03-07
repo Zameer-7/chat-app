@@ -4,6 +4,7 @@ import { WebSocket, WebSocketServer } from "ws";
 import { repository } from "../models/repository";
 import { verifyToken } from "../middleware/auth";
 import { emitToUser, registerUserSocket, unregisterUserSocket } from "./notifier";
+import { sendPushNotification } from "../routes/push";
 
 type SocketUser = { userId: number; username: string };
 
@@ -215,6 +216,20 @@ export function registerWebSocket(server: Server) {
               receiverId: friendId,
               status: "delivered",
             });
+          } else {
+            // Receiver is offline — send background push notification
+            const preview =
+              msg.messageType === "gif"
+                ? "Sent a GIF 🎞️"
+                : msg.messageType === "image"
+                  ? "Sent an image 🖼️"
+                  : (msg.content || "").slice(0, 120);
+            sendPushNotification(friendId, {
+              title: "New Message — Vibely",
+              body: `${msg.senderNickname}: ${preview}`,
+              url: `/dm/${user.userId}`,
+              tag: `dm-${user.userId}`,
+            }).catch(() => {});
           }
 
           const receiverActiveWithSender = directSubscribers.get(user.userId)?.has(friendId);
