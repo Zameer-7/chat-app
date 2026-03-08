@@ -71,9 +71,14 @@ export default function SignupPage() {
       return;
     }
 
+    if (!captchaToken) {
+      setError("Please complete the CAPTCHA verification.");
+      return;
+    }
+
     setLoading(true);
     try {
-      const returnedEmail = await signup(username, email, password, captchaToken!);
+      const returnedEmail = await signup(username, email, password, captchaToken);
       setLocation(`/verify-email?email=${encodeURIComponent(returnedEmail)}`);
     } catch (err) {
       const message = (err as Error).message;

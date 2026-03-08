@@ -23,36 +23,53 @@ export function useSocket(pathFactory: (token: string) => string) {
       return;
     }
 
+    let destroyed = false;
+    let reconnectTimer: number;
+    let reconnectDelay = 1000;
     const wsBase = getWebSocketBaseUrl();
-    const ws = new WebSocket(`${wsBase}${path}`);
-    wsRef.current = ws;
 
-    ws.onopen = () => {
-      setStatus("connected");
-      // Drain offline message queue for this connection
-      const queueKey = `vibely-queue:${path}`;
-      try {
-        const queued: unknown[] = JSON.parse(localStorage.getItem(queueKey) ?? "[]");
-        if (queued.length > 0) {
-          localStorage.removeItem(queueKey);
-          queued.forEach((msg) => ws.send(JSON.stringify(msg)));
+    function connect() {
+      if (destroyed) return;
+      const ws = new WebSocket(`${wsBase}${path}`);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        setStatus("connected");
+        reconnectDelay = 1000; // Reset backoff on successful connect
+        // Drain offline message queue for this connection
+        const queueKey = `vibely-queue:${path}`;
+        try {
+          const queued: unknown[] = JSON.parse(localStorage.getItem(queueKey) ?? "[]");
+          if (queued.length > 0) {
+            localStorage.removeItem(queueKey);
+            queued.forEach((msg) => ws.send(JSON.stringify(msg)));
+          }
+        } catch {
+          localStorage.removeItem(`vibely-queue:${path}`);
         }
-      } catch {
-        localStorage.removeItem(`vibely-queue:${path}`);
-      }
-    };
-    ws.onclose = () => setStatus("disconnected");
-    ws.onerror = () => setStatus("disconnected");
-    ws.onmessage = (event) => {
-      try {
-        setLastEvent(JSON.parse(event.data));
-      } catch {
-        setLastEvent(null);
-      }
-    };
+      };
+      ws.onclose = () => {
+        setStatus("disconnected");
+        // Auto-reconnect with exponential backoff capped at 30s
+        reconnectTimer = window.setTimeout(() => connect(), reconnectDelay);
+        reconnectDelay = Math.min(reconnectDelay * 2, 30000);
+      };
+      ws.onerror = () => setStatus("disconnected");
+      ws.onmessage = (event) => {
+        try {
+          setLastEvent(JSON.parse(event.data));
+        } catch {
+          setLastEvent(null);
+        }
+      };
+    }
+
+    connect();
 
     return () => {
-      ws.close();
+      destroyed = true;
+      clearTimeout(reconnectTimer);
+      wsRef.current?.close();
       wsRef.current = null;
     };
   }, [path]);

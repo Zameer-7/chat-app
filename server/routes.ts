@@ -66,6 +66,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // Mark all existing users as verified so they can still log in
   await pool.query(`UPDATE users SET email_verified = true WHERE email_verified = false AND email_otp IS NULL AND created_at < NOW() - INTERVAL '1 minute'`);
 
+  // Performance indexes for scalability
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_users_online ON users(is_online)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_friend_requests_receiver ON friend_requests(receiver_id, status)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_friend_requests_sender ON friend_requests(sender_id, status)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_messages_sender ON messages(sender_id)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_user_rooms_user ON user_rooms(user_id)`);
+
   registerAuthRoutes(app);
   registerUserRoutes(app);
   registerProfileRoutes(app);

@@ -28,6 +28,14 @@ const resendLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+const verifyLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10,
+  message: { message: "Too many verification attempts. Please try again later." },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 export function registerAuthRoutes(app: Express) {
   app.post("/api/auth/signup", signupLimiter, async (req, res) => {
     const parsed = signupSchema.safeParse(req.body);
@@ -95,7 +103,7 @@ export function registerAuthRoutes(app: Express) {
     }
   });
 
-  app.post("/api/auth/verify-email", async (req, res) => {
+  app.post("/api/auth/verify-email", verifyLimiter, async (req, res) => {
     const { email, otp } = req.body;
     if (!email || !otp) {
       return res.status(400).json({ message: "Email and OTP are required" });
