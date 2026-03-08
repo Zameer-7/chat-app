@@ -16,9 +16,11 @@ export type SafeUser = {
   createdAt: string;
   isOnline: boolean;
   lastSeen: string;
+  emailVerified: boolean;
 };
 
 export type AuthResponse = { token: string; user: SafeUser };
+export type SignupResponse = { requiresVerification: true; email: string };
 
 const TOKEN_KEY = "chat_app_token";
 export function getToken() {
@@ -76,8 +78,8 @@ export async function authFetch<T = unknown>(url: string, init: RequestInit = {}
   return res.json() as Promise<T>;
 }
 
-export function signup(payload: { username: string; email: string; password: string }) {
-  return authFetch<AuthResponse>(api.auth.signup, {
+export function signup(payload: { username: string; email: string; password: string; captchaToken: string }) {
+  return authFetch<SignupResponse>(api.auth.signup, {
     method: "POST",
     body: JSON.stringify(payload),
   });
@@ -119,6 +121,20 @@ export function login(payload: { email: string; password: string }) {
   return authFetch<AuthResponse>(api.auth.login, {
     method: "POST",
     body: JSON.stringify(payload),
+  });
+}
+
+export function verifyEmail(payload: { email: string; otp: string }) {
+  return authFetch<AuthResponse>(api.auth.verifyEmail, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function resendOtp(email: string) {
+  return authFetch<{ success: boolean }>(api.auth.resendOtp, {
+    method: "POST",
+    body: JSON.stringify({ email }),
   });
 }
 

@@ -13,6 +13,19 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 const EmojiPicker = lazy(() => import("emoji-picker-react"));
 
+function formatLastSeen(ts: string) {
+  if (!ts) return "";
+  const date = new Date(ts);
+  if (isNaN(date.getTime())) return "";
+  const diffMs = Date.now() - date.getTime();
+  const diffMin = Math.floor(diffMs / 60000);
+  if (diffMin < 1) return "Just now";
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffH = Math.floor(diffMin / 60);
+  if (diffH < 24) return `${diffH}h ago`;
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
 export default function DirectChatPage() {
   const [, params] = useRoute("/dm/:friendId");
   const friendId = Number(params?.friendId || 0);
@@ -260,7 +273,13 @@ export default function DirectChatPage() {
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <span className={`w-2.5 h-2.5 rounded-full ${friend?.isOnline ? "bg-green-500" : "bg-gray-400"}`} />
-          <span className="text-sm text-muted-foreground hidden sm:inline">{friend?.isOnline ? "Online" : "Offline"}</span>
+          <span className="text-sm text-muted-foreground hidden sm:inline">
+            {friend?.isOnline
+              ? "Online"
+              : friend?.lastSeen
+                ? `Last seen ${formatLastSeen(friend.lastSeen)}`
+                : "Offline"}
+          </span>
           {isMuted && <span className="text-sm" title="Muted">🔕</span>}
           {isArchived && <span className="text-sm" title="Archived">📦</span>}
           <button

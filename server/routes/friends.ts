@@ -10,6 +10,17 @@ export function registerFriendRoutes(app: Express) {
     return res.json(friends.rows);
   });
 
+  // Lightweight endpoint returning only id + isOnline + lastSeen for all friends
+  app.get("/api/friends/status", authMiddleware, async (req: AuthedRequest, res) => {
+    const friends = await repository.listFriends(req.user!.userId);
+    const statuses = (friends.rows as Array<{ id: number; isOnline: boolean; lastSeen: string }>).map((f) => ({
+      id: f.id,
+      isOnline: f.isOnline,
+      lastSeen: f.lastSeen,
+    }));
+    return res.json(statuses);
+  });
+
   app.get("/api/unread-counts", authMiddleware, async (req: AuthedRequest, res) => {
     const counts = await repository.getUnreadCounts(req.user!.userId);
     const frResult = await repository.listIncomingFriendRequests(req.user!.userId);

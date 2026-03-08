@@ -1,10 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NovaLogo } from "@/components/layout/nova-logo";
 import { checkUsernameAvailability } from "@/services/api";
+import Turnstile, { type BoundTurnstileObject } from "react-turnstile";
 
 const USERNAME_REGEX = /^[a-zA-Z0-9_]{3,20}$/;
 const DEBOUNCE_MS = 500;
@@ -21,6 +22,8 @@ export default function SignupPage() {
   const [usernameError, setUsernameError] = useState<string | null>(null);
   const [availability, setAvailability] = useState<"available" | "taken" | "checking" | null>(null);
   const [loading, setLoading] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const turnstileRef = useRef<BoundTurnstileObject | null>(null);
 
   // Live availability check with debounce
   useEffect(() => {
@@ -70,10 +73,13 @@ export default function SignupPage() {
 
     setLoading(true);
     try {
-      await signup(username, email, password);
-      setLocation("/dashboard");
+      const returnedEmail = await signup(username, email, password, captchaToken!);
+      setLocation(`/verify-email?email=${encodeURIComponent(returnedEmail)}`);
     } catch (err) {
       const message = (err as Error).message;
+      // Reset captcha on failure so user must re-verify
+      setCaptchaToken(null);
+      turnstileRef.current?.reset();
       if (message.toLowerCase().includes("username")) {
         setUsernameError("Username already taken. Try a different one.");
         setAvailability("taken");
@@ -163,9 +169,25 @@ export default function SignupPage() {
             autoComplete="new-password"
           />
 
+          {/* CAPTCHA */}
+          <div className="flex justify-center">
+            <Turnstile
+              sitekey={import.meta.env.VITE_TURNSTILE_SITE_KEY || "1x00000000000000000000AA"}
+              onVerify={(token, bound) => {
+                setCaptchaToken(token);
+                turnstileRef.current = bound;
+              }}
+              onExpire={(_token, bound) => {
+                setCaptchaToken(null);
+                turnstileRef.current = bound;
+              }}
+              theme="light"
+            />
+          </div>
+
           <Button
             className="w-full rounded-xl"
-            disabled={loading || availability === "taken"}
+            disabled={loading || availability === "taken" || !captchaToken}
           >
             {loading ? "Creating account…" : "Create Account"}
           </Button>

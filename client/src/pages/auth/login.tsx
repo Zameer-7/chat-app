@@ -21,7 +21,12 @@ export default function LoginPage() {
       await login(email, password);
       setLocation("/dashboard");
     } catch (err) {
-      setError((err as Error).message);
+      const message = (err as Error).message;
+      if (message.toLowerCase().includes("verify your email")) {
+        setLocation(`/verify-email?email=${encodeURIComponent(email)}`);
+      } else {
+        setError(message);
+      }
     } finally {
       setLoading(false);
     }

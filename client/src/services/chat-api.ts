@@ -74,6 +74,13 @@ export function addMembersToRoom(roomId: string, userIds: number[]) {
   });
 }
 
+export function removeMemberFromRoom(roomId: string, userId: number) {
+  return authFetch<{ message: string }>(api.rooms.removeMember(roomId), {
+    method: "POST",
+    body: JSON.stringify({ userId }),
+  });
+}
+
 export function getJoinedRooms() {
   return authFetch<JoinedRoom[]>(api.rooms.joined);
 }
@@ -107,6 +114,12 @@ export function getRoomStats(roomId: string) {
 
 export function getFriends() {
   return authFetch<Friend[]>(api.friends.list);
+}
+
+export type FriendStatus = { id: number; isOnline: boolean; lastSeen: string };
+
+export function getFriendsStatus() {
+  return authFetch<FriendStatus[]>(api.friends.status);
 }
 
 export type UnreadCounts = {

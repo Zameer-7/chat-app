@@ -69,6 +69,7 @@ export function ChatWindow({
   const [editContent, setEditContent] = useState("");
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const prevScrollHeightRef = useRef<number>(0);
   const isInitialLoadRef = useRef(true);
@@ -344,12 +345,13 @@ export function ChatWindow({
                   </div>
                 ) : message.messageType === "gif" && message.gifUrl ? (
                   <img src={message.gifUrl} alt="gif" className="max-h-56 w-full rounded-lg object-cover" />
-                ) : message.messageType === "image" && message.gifUrl ? (
+                ) : message.messageType === "image" && (message.gifUrl || message.content) ? (
                   <img
-                    src={message.gifUrl}
+                    src={message.gifUrl || message.content}
                     alt="Image"
-                    className="max-w-full max-h-64 rounded-lg object-cover"
+                    className="max-w-[220px] max-h-64 rounded-lg object-cover cursor-pointer hover:opacity-90 transition-opacity"
                     loading="lazy"
+                    onClick={(e) => { e.stopPropagation(); setLightboxUrl(message.gifUrl || message.content); }}
                   />
                 ) : (
                   <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
@@ -482,6 +484,28 @@ export function ChatWindow({
           >
             Select
           </button>
+        </div>
+      )}
+
+      {/* Image lightbox modal */}
+      {lightboxUrl && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm"
+          onClick={() => setLightboxUrl(null)}
+        >
+          <button
+            type="button"
+            className="absolute top-4 right-4 text-white/80 hover:text-white z-10"
+            onClick={() => setLightboxUrl(null)}
+          >
+            <X className="h-6 w-6" />
+          </button>
+          <img
+            src={lightboxUrl}
+            alt="Preview"
+            className="max-w-[90vw] max-h-[90vh] rounded-lg object-contain shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          />
         </div>
       )}
 

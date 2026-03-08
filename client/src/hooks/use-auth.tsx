@@ -1,11 +1,19 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
-import { getCurrentUser, login as loginApi, setToken, signup as signupApi, type SafeUser } from "@/services/api";
+import {
+  getCurrentUser,
+  login as loginApi,
+  setToken,
+  signup as signupApi,
+  verifyEmail as verifyEmailApi,
+  type SafeUser,
+} from "@/services/api";
 
 type AuthContextValue = {
   user: SafeUser | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  signup: (username: string, email: string, password: string) => Promise<void>;
+  signup: (username: string, email: string, password: string, captchaToken: string) => Promise<string>;
+  verifyEmail: (email: string, otp: string) => Promise<void>;
   setUser: (user: SafeUser) => void;
   logout: () => void;
 };
@@ -64,8 +72,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setToken(result.token);
         setUserState(result.user);
       },
-      async signup(username: string, email: string, password: string) {
-        const result = await signupApi({ username, email, password });
+      async signup(username: string, email: string, password: string, captchaToken: string) {
+        const result = await signupApi({ username, email, password, captchaToken });
+        // Signup now requires email verification — return email for redirect
+        return result.email;
+      },
+      async verifyEmail(email: string, otp: string) {
+        const result = await verifyEmailApi({ email, otp });
         setToken(result.token);
         setUserState(result.user);
       },

@@ -4,6 +4,8 @@ export const api = {
     login: "/api/auth/login",
     me: "/api/auth/me",
     logout: "/api/auth/logout",
+    verifyEmail: "/api/auth/verify-email",
+    resendOtp: "/api/auth/resend-otp",
   },
   users: {
     search: "/api/users/search",
@@ -16,6 +18,7 @@ export const api = {
   },
   friends: {
     list: "/api/friends",
+    status: "/api/friends/status",
   },
   unread: {
     counts: "/api/unread-counts",
@@ -38,6 +41,7 @@ export const api = {
     messages: (id: string) => `/api/rooms/${id}/messages`,
     members: (id: string) => `/api/rooms/${id}/members`,
     addMembers: (id: string) => `/api/rooms/${id}/add-members`,
+    removeMember: (id: string) => `/api/rooms/${id}/remove-member`,
     stats: (id: string) => `/api/rooms/${id}/stats`,
   },
   direct: {

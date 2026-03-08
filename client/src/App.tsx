@@ -1,8 +1,8 @@
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { Route, Switch, useLocation } from "wouter";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "./lib/queryClient";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/toaster";
 import { AuthProvider, useAuth } from "@/hooks/use-auth";
@@ -11,9 +11,11 @@ import { useSocket } from "@/hooks/use-socket";
 import { wsPaths } from "@shared/routes";
 import { usePwa } from "@/hooks/use-pwa";
 import { useToast } from "@/hooks/use-toast";
+import { getChatSettings, type ChatSetting } from "@/services/chat-api";
 
 import LoginPage from "@/pages/auth/login";
 import SignupPage from "@/pages/auth/signup";
+import VerifyEmailPage from "@/pages/auth/verify-email";
 import DashboardPage from "@/pages/dashboard/dashboard";
 import RoomsPage from "@/pages/dashboard/rooms";
 import FriendsPage from "@/pages/dashboard/friends";
@@ -63,6 +65,25 @@ function GlobalEvents() {
   const { lastEvent } = useSocket(pathFactory);
   const { canInstall, installApp, notifPermission, requestNotifications } = usePwa();
   const { toast } = useToast();
+
+  // Load chat settings so we can check mute status
+  const { data: chatSettingsList = [] } = useQuery({
+    queryKey: ["chat-settings"],
+    queryFn: getChatSettings,
+    enabled: Boolean(user),
+  });
+
+  const isChatMuted = useMemo(() => {
+    const now = Date.now();
+    return (key: { roomId?: string; friendId?: number }) => {
+      const setting = chatSettingsList.find((s: ChatSetting) =>
+        key.roomId ? s.roomId === key.roomId : key.friendId ? s.friendId === key.friendId : false,
+      );
+      if (!setting || !setting.muted) return false;
+      if (setting.muteUntil && new Date(setting.muteUntil).getTime() < now) return false;
+      return true;
+    };
+  }, [chatSettingsList]);
 
   // Ask for notification permission once user is logged in
   useEffect(() => {
@@ -123,9 +144,10 @@ function GlobalEvents() {
     ) {
       const isInChat = location.startsWith(`/dm/${lastEvent.senderId}`);
       const isHidden = document.hidden;
+      const muted = isChatMuted({ friendId: lastEvent.senderId });
       // Update unread counts for sidebar badges
       queryClient.invalidateQueries({ queryKey: ["unread-counts"] });
-      if (!isInChat || isHidden) {
+      if (!muted && (!isInChat || isHidden)) {
         if (notifPermission === "granted") {
           const preview =
             lastEvent.messageType === "gif"
@@ -151,9 +173,15 @@ function GlobalEvents() {
     ) {
       queryClient.invalidateQueries({ queryKey: ["unread-counts"] });
       const isInRoom = location.startsWith(`/rooms/${lastEvent.roomId}`);
-      if (!isInRoom) {
+      const muted = isChatMuted({ roomId: lastEvent.roomId });
+      if (!muted && !isInRoom) {
         try { new Audio("/notification.wav").play(); } catch {}
       }
+    }
+
+    // Presence updates — refresh friends list for online/offline display
+    if (lastEvent.type === "presence_update") {
+      queryClient.invalidateQueries({ queryKey: ["friends"] });
     }
 
     // User joined/left room — refresh member lists
@@ -177,7 +205,12 @@ function GlobalEvents() {
       }
       try { new Audio("/notification.wav").play(); } catch {}
     }
-  }, [lastEvent, user, queryClient, location, notifPermission]);
+
+    // Chat muted/unmuted events — refresh settings
+    if (lastEvent.type === "chat_muted" || lastEvent.type === "chat_unmuted") {
+      queryClient.invalidateQueries({ queryKey: ["chat-settings"] });
+    }
+  }, [lastEvent, user, queryClient, location, notifPermission, isChatMuted]);
 
   return null;
 }
@@ -229,6 +262,11 @@ function Router() {
       <Route path="/signup">
         <PublicOnly>
           <SignupPage />
+        </PublicOnly>
+      </Route>
+      <Route path="/verify-email">
+        <PublicOnly>
+          <VerifyEmailPage />
         </PublicOnly>
       </Route>
 

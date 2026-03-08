@@ -3,7 +3,7 @@ import { Home, Users, Search, Inbox, MessageCircle, LogOut, Settings, CircleUser
 import { useAuth } from "@/hooks/use-auth";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { getUnreadCounts } from "@/services/chat-api";
+import { getUnreadCounts, getChatSettings, type ChatSetting } from "@/services/chat-api";
 import { NovaLogo } from "./nova-logo";
 import { usePwa } from "@/hooks/use-pwa";
 
@@ -45,9 +45,26 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     refetchInterval: 15_000,
   });
 
+  const { data: chatSettingsList = [] } = useQuery({
+    queryKey: ["chat-settings"],
+    queryFn: getChatSettings,
+  });
+
+  const now = Date.now();
+  const mutedFriendIds = new Set(
+    chatSettingsList
+      .filter((s: ChatSetting) => s.friendId && s.muted && (!s.muteUntil || new Date(s.muteUntil).getTime() > now))
+      .map((s: ChatSetting) => s.friendId),
+  );
+  const mutedRoomIds = new Set(
+    chatSettingsList
+      .filter((s: ChatSetting) => s.roomId && s.muted && (!s.muteUntil || new Date(s.muteUntil).getTime() > now))
+      .map((s: ChatSetting) => s.roomId),
+  );
+
   const friendRequestCount = unread?.friendRequests ?? 0;
-  const totalDmUnread = unread?.dm?.reduce((sum, d) => sum + d.count, 0) ?? 0;
-  const totalRoomUnread = unread?.rooms?.reduce((sum, r) => sum + r.count, 0) ?? 0;
+  const totalDmUnread = unread?.dm?.filter((d) => !mutedFriendIds.has(d.friendId)).reduce((sum, d) => sum + d.count, 0) ?? 0;
+  const totalRoomUnread = unread?.rooms?.filter((r) => !mutedRoomIds.has(r.roomId)).reduce((sum, r) => sum + r.count, 0) ?? 0;
 
   function NavLink({
     href,

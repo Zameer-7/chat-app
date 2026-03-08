@@ -119,8 +119,9 @@ export function registerRoomRoutes(app: Express) {
     const room = await repository.getRoom(roomId);
     if (!room) return res.status(404).json({ message: "Room not found" });
 
-    const isMember = await repository.isActiveRoomMember(req.user!.userId, roomId);
-    if (!isMember) return res.status(403).json({ message: "You must be an active member to add others" });
+    if (room.createdBy !== req.user!.userId) {
+      return res.status(403).json({ message: "Only the room owner can add members" });
+    }
 
     const userIds: number[] = req.body?.userIds;
     if (!Array.isArray(userIds) || userIds.length === 0) {
@@ -137,5 +138,28 @@ export function registerRoomRoutes(app: Express) {
       emitToUser(userId, { type: "room_invite", roomId, roomName: room.roomName, invitedBy: req.user!.userId });
     }
     return res.json({ added: added.length });
+  });
+
+  app.post("/api/rooms/:id/remove-member", authMiddleware, async (req: AuthedRequest, res) => {
+    const roomId = String(req.params.id);
+    const room = await repository.getRoom(roomId);
+    if (!room) return res.status(404).json({ message: "Room not found" });
+
+    if (room.createdBy !== req.user!.userId) {
+      return res.status(403).json({ message: "Only the room owner can remove members" });
+    }
+
+    const userId = Number(req.body?.userId);
+    if (!userId || !Number.isInteger(userId)) {
+      return res.status(400).json({ message: "Valid userId is required" });
+    }
+    if (userId === req.user!.userId) {
+      return res.status(400).json({ message: "Cannot remove yourself" });
+    }
+
+    await repository.leaveRoom(userId, roomId);
+    broadcastToRoom(roomId, { type: "user_left", roomId, userId });
+    emitToUser(userId, { type: "removed_from_room", roomId, roomName: room.roomName });
+    return res.json({ message: "Member removed" });
   });
 }

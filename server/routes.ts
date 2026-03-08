@@ -59,6 +59,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_chat_settings_user_room ON chat_settings(user_id, room_id) WHERE room_id IS NOT NULL`);
   await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_chat_settings_user_friend ON chat_settings(user_id, friend_id) WHERE friend_id IS NOT NULL`);
 
+  // Email verification columns
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT false`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS email_otp TEXT`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS otp_expiry TIMESTAMP`);
+  // Mark all existing users as verified so they can still log in
+  await pool.query(`UPDATE users SET email_verified = true WHERE email_verified = false AND email_otp IS NULL AND created_at < NOW() - INTERVAL '1 minute'`);
+
   registerAuthRoutes(app);
   registerUserRoutes(app);
   registerProfileRoutes(app);

@@ -10,6 +10,7 @@ import { uploadImage } from "@/services/api";
 const EmojiPicker = lazy(() => import("emoji-picker-react"));
 import {
   addMembersToRoom,
+  removeMemberFromRoom,
   deleteRoom,
   getFriends,
   getJoinedRooms,
@@ -610,7 +611,7 @@ export default function RoomChatPage() {
         <div className="rounded-2xl border bg-card px-4 py-3 space-y-2">
           <div className="flex items-center justify-between">
             <h3 className="font-semibold text-sm">Members ({members.length})</h3>
-            {!left && (
+            {isOwner && !left && (
               <Button
                 variant={showAddMembers ? "secondary" : "outline"}
                 size="sm"
@@ -646,6 +647,24 @@ export default function RoomChatPage() {
                     )}
                     {m.leftAt && <span className="text-[10px] text-muted-foreground shrink-0">(left)</span>}
                   </div>
+                  {isOwner && m.userId !== room?.createdBy && !m.leftAt && (
+                    <button
+                      type="button"
+                      className="ml-auto shrink-0 text-[10px] text-red-500 hover:text-red-700 dark:hover:text-red-400 font-medium px-1.5 py-0.5 rounded hover:bg-red-100 dark:hover:bg-red-900/20 transition-colors"
+                      onClick={async () => {
+                        try {
+                          await removeMemberFromRoom(roomId, m.userId);
+                          queryClient.invalidateQueries({ queryKey: ["room-members", roomId] });
+                          queryClient.invalidateQueries({ queryKey: ["room-stats", roomId] });
+                          toast({ title: `${m.nickname} removed from room` });
+                        } catch (err: any) {
+                          toast({ title: err.message || "Failed to remove member", variant: "destructive" });
+                        }
+                      }}
+                    >
+                      Remove
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
@@ -654,7 +673,7 @@ export default function RoomChatPage() {
       )}
 
       {/* Add Members Panel */}
-      {showAddMembers && <AddMembersPanel roomId={roomId} members={members} onClose={() => setShowAddMembers(false)} />}
+      {isOwner && showAddMembers && <AddMembersPanel roomId={roomId} members={members} onClose={() => setShowAddMembers(false)} />}
 
       {/* Search bar */}
       {showSearch && (

@@ -4,7 +4,7 @@ import { useLocation } from "wouter";
 import { Archive, MessageCircle, UserPlus } from "lucide-react";
 import { wsPaths } from "@shared/routes";
 import { useSocket } from "@/hooks/use-socket";
-import { getFriends, getChatSettings, getUnreadCounts, type Friend, type ChatSetting } from "@/services/chat-api";
+import { getFriends, getFriendsStatus, getChatSettings, getUnreadCounts, type Friend, type ChatSetting } from "@/services/chat-api";
 import { Button } from "@/components/ui/button";
 
 function getInitials(name?: string) {
@@ -77,24 +77,50 @@ export default function FriendsPage() {
   const activeFriends = friends.filter((f) => !archivedFriendIds.has(f.id));
   const archivedFriends = friends.filter((f) => archivedFriendIds.has(f.id));
 
-  const [onlineOverrides, setOnlineOverrides] = useState<Map<number, boolean>>(new Map());
+  const [onlineOverrides, setOnlineOverrides] = useState<Map<number, { isOnline: boolean; lastSeen?: string }>>(new Map());
   const wsPath = useCallback((token: string) => wsPaths.user(token), []);
   const { lastEvent } = useSocket(wsPath);
 
   useEffect(() => {
     if (lastEvent?.type === "presence_update") {
       const uid = Number(lastEvent.userId);
-      const isOnline = Boolean(lastEvent.isOnline);
+      const isOn = Boolean(lastEvent.isOnline);
+      const ls = lastEvent.lastSeen ? String(lastEvent.lastSeen) : undefined;
       setOnlineOverrides((prev) => {
         const next = new Map(prev);
-        next.set(uid, isOnline);
+        next.set(uid, { isOnline: isOn, lastSeen: ls });
         return next;
       });
     }
   }, [lastEvent]);
 
-  const isOnline = (friend: Friend) =>
-    onlineOverrides.has(friend.id) ? onlineOverrides.get(friend.id)! : friend.isOnline;
+  // Periodic presence fallback sync every 30 seconds
+  const { data: statusList } = useQuery({
+    queryKey: ["friends-status"],
+    queryFn: getFriendsStatus,
+    refetchInterval: 30_000,
+  });
+
+  useEffect(() => {
+    if (!statusList) return;
+    setOnlineOverrides((prev) => {
+      const next = new Map(prev);
+      for (const s of statusList) {
+        next.set(s.id, { isOnline: s.isOnline, lastSeen: s.lastSeen });
+      }
+      return next;
+    });
+  }, [statusList]);
+
+  const isOnline = (friend: Friend) => {
+    const override = onlineOverrides.get(friend.id);
+    return override ? override.isOnline : friend.isOnline;
+  };
+
+  const getLastSeen = (friend: Friend) => {
+    const override = onlineOverrides.get(friend.id);
+    return override?.lastSeen || friend.lastSeen;
+  };
 
   return (
     <div className="space-y-6">
@@ -139,9 +165,9 @@ export default function FriendsPage() {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {activeFriends.map((friend) => {
               const online = isOnline(friend);
-              const lastSeen = !online && friend.lastSeen ? formatLastSeen(friend.lastSeen) : null;
+              const lastSeen = !online ? formatLastSeen(getLastSeen(friend)) : null;
               const muted = mutedFriendIds.has(friend.id);
-              const unreadCount = dmUnreadMap.get(friend.id) ?? 0;
+              const unreadCount = muted ? 0 : (dmUnreadMap.get(friend.id) ?? 0);
 
               return (
                 <div
@@ -215,7 +241,7 @@ export default function FriendsPage() {
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {archivedFriends.map((friend) => {
                   const online = isOnline(friend);
-                  const lastSeen = !online && friend.lastSeen ? formatLastSeen(friend.lastSeen) : null;
+                  const lastSeen = !online ? formatLastSeen(getLastSeen(friend)) : null;
                   const muted = mutedFriendIds.has(friend.id);
 
                   return (

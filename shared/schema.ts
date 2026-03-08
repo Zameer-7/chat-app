@@ -14,6 +14,9 @@ export const users = pgTable("users", {
   avatarUrl: text("avatar_url"),
   bio: text("bio"),
   isOnline: boolean("is_online").notNull().default(false),
+  emailVerified: boolean("email_verified").notNull().default(false),
+  emailOtp: text("email_otp"),
+  otpExpiry: timestamp("otp_expiry"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   lastSeen: timestamp("last_seen").notNull().defaultNow(),
 });
@@ -108,6 +111,7 @@ export const signupSchema = z.object({
     ),
   email: z.string().email(),
   password: z.string().min(6),
+  captchaToken: z.string().min(1, "Captcha is required"),
 });
 
 export const loginSchema = z.object({

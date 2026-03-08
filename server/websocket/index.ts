@@ -33,10 +33,20 @@ export function registerWebSocket(server: Server) {
   async function markPresence(userId: number, isOnline: boolean) {
     await repository.setUserOnlineStatus(userId, isOnline);
 
+    const lastSeen = isOnline ? undefined : new Date().toISOString();
+    const presencePayload = { type: "presence_update", userId, isOnline, lastSeen };
+
+    // Broadcast to all friends via their global user socket
+    const friendIds = await repository.listFriendIds(userId);
+    for (const fid of friendIds) {
+      emitToUser(fid, presencePayload);
+    }
+
+    // Also notify direct subscribers (users viewing this user's DM screen)
     const subscribers = directSubscribers.get(userId);
     if (subscribers) {
       subscribers.forEach((sockets) => {
-        sockets.forEach((ws) => safeSend(ws, { type: "presence_update", userId, isOnline }));
+        sockets.forEach((ws) => safeSend(ws, presencePayload));
       });
     }
   }

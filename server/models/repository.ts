@@ -17,6 +17,7 @@ export type SafeUser = {
   createdAt: Date;
   isOnline: boolean;
   lastSeen: Date;
+  emailVerified: boolean;
 };
 
 function toSafeUser(user: typeof users.$inferSelect): SafeUser {
@@ -33,6 +34,7 @@ function toSafeUser(user: typeof users.$inferSelect): SafeUser {
     createdAt: user.createdAt,
     isOnline: user.isOnline,
     lastSeen: user.lastSeen,
+    emailVerified: user.emailVerified,
   };
 }
 
@@ -186,6 +188,20 @@ export const repository = {
     };
   },
 
+  async setEmailOtp(userId: number, otp: string, expiry: Date) {
+    await db
+      .update(users)
+      .set({ emailOtp: otp, otpExpiry: expiry })
+      .where(eq(users.id, userId));
+  },
+
+  async verifyEmail(userId: number) {
+    await db
+      .update(users)
+      .set({ emailVerified: true, emailOtp: null, otpExpiry: null })
+      .where(eq(users.id, userId));
+  },
+
   async createRoom(createdBy: number, roomName?: string) {
     const id = Math.random().toString(36).slice(2, 10);
     const name = roomName?.trim() || "Chat Room";
@@ -322,10 +338,10 @@ export const repository = {
 
   async getRoomStats(roomId: string) {
     const participantsResult = await db.execute(sql`
-      select array_remove(array_agg(distinct sender_id), null) as "participantIds",
-             count(distinct sender_id)::int as "participants"
-      from messages
-      where room_id = ${roomId}
+      select array_agg(user_id) as "participantIds",
+             count(*)::int as "participants"
+      from user_rooms
+      where room_id = ${roomId} and left_at is null
     `);
     const row = participantsResult.rows[0] as { participantIds: number[] | null; participants: number } | undefined;
     return { participantIds: row?.participantIds || [], participants: row?.participants || 0 };
@@ -463,6 +479,15 @@ export const repository = {
     return updated;
   },
 
+  async listFriendIds(userId: number): Promise<number[]> {
+    const result = await db.execute(sql`
+      select case when fr.sender_id = ${userId} then fr.receiver_id else fr.sender_id end as "friendId"
+      from friend_requests fr
+      where (fr.sender_id = ${userId} or fr.receiver_id = ${userId}) and fr.status = 'accepted'
+    `);
+    return (result.rows as Array<{ friendId: number }>).map((r) => r.friendId);
+  },
+
   async listFriends(userId: number) {
     return db.execute(sql`
       select u.id, u.email, u.username, u.nickname, u.avatar_url as "avatarUrl", u.bio, u.chat_theme as "chatTheme",
@@ -476,7 +501,7 @@ export const repository = {
   },
 
   async getUnreadCounts(userId: number) {
-    // Unread DMs per friend (messages sent TO this user that are not 'seen' and not hidden)
+    // Unread DMs per friend — exclude muted chats
     const dmResult = await db.execute(sql`
       select m.sender_id as "friendId", count(*)::int as "count"
       from messages m
@@ -485,10 +510,15 @@ export const repository = {
         and m.status != 'seen'
         and m.deleted = false
         and not exists (select 1 from message_hidden mh where mh.message_id = m.id and mh.user_id = ${userId})
+        and not exists (
+          select 1 from chat_settings cs
+          where cs.user_id = ${userId} and cs.friend_id = m.sender_id and cs.muted = true
+            and (cs.mute_until is null or cs.mute_until > now())
+        )
       group by m.sender_id
     `);
 
-    // Unread room messages: messages in rooms user is active member of, not sent by user, not seen
+    // Unread room messages — exclude muted rooms
     const roomResult = await db.execute(sql`
       select m.room_id as "roomId", count(*)::int as "count"
       from messages m
@@ -498,6 +528,11 @@ export const repository = {
         and m.deleted = false
         and m.created_at > ur.joined_at
         and not exists (select 1 from message_hidden mh where mh.message_id = m.id and mh.user_id = ${userId})
+        and not exists (
+          select 1 from chat_settings cs
+          where cs.user_id = ${userId} and cs.room_id = m.room_id and cs.muted = true
+            and (cs.mute_until is null or cs.mute_until > now())
+        )
       group by m.room_id
     `);
 
