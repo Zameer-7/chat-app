@@ -6,6 +6,7 @@ export const api = {
     logout: "/api/auth/logout",
     verifyEmail: "/api/auth/verify-email",
     resendOtp: "/api/auth/resend-otp",
+    captcha: "/api/auth/captcha",
   },
   users: {
     search: "/api/users/search",

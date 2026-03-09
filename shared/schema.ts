@@ -111,7 +111,8 @@ export const signupSchema = z.object({
     ),
   email: z.string().email(),
   password: z.string().min(6),
-  captchaToken: z.string().min(1, "Captcha is required"),
+  captchaId: z.string().min(1, "Captcha is required"),
+  captchaAnswer: z.string().min(1, "Please type the captcha word"),
 });
 
 export const loginSchema = z.object({

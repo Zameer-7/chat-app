@@ -9,6 +9,8 @@ const transporter = nodemailer.createTransport({
   },
 });
 
+export const isEmailConfigured = Boolean(process.env.EMAIL_USER && process.env.EMAIL_PASS);
+
 export function generateOtp(): string {
   return crypto.randomInt(100000, 999999).toString();
 }

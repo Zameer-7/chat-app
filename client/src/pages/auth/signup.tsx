@@ -1,11 +1,11 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NovaLogo } from "@/components/layout/nova-logo";
-import { checkUsernameAvailability } from "@/services/api";
-import Turnstile, { type BoundTurnstileObject } from "react-turnstile";
+import { checkUsernameAvailability, getCaptcha } from "@/services/api";
+import { RefreshCw } from "lucide-react";
 
 const USERNAME_REGEX = /^[a-zA-Z0-9_]{3,20}$/;
 const DEBOUNCE_MS = 500;
@@ -22,8 +22,28 @@ export default function SignupPage() {
   const [usernameError, setUsernameError] = useState<string | null>(null);
   const [availability, setAvailability] = useState<"available" | "taken" | "checking" | null>(null);
   const [loading, setLoading] = useState(false);
-  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
-  const turnstileRef = useRef<BoundTurnstileObject | null>(null);
+  const [captchaId, setCaptchaId] = useState("");
+  const [captchaWord, setCaptchaWord] = useState("");
+  const [captchaAnswer, setCaptchaAnswer] = useState("");
+  const [captchaLoading, setCaptchaLoading] = useState(false);
+
+  const fetchCaptcha = useCallback(async () => {
+    setCaptchaLoading(true);
+    setCaptchaAnswer("");
+    try {
+      const data = await getCaptcha();
+      setCaptchaId(data.id);
+      setCaptchaWord(data.word);
+    } catch {
+      setError("Failed to load CAPTCHA. Please refresh the page.");
+    } finally {
+      setCaptchaLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchCaptcha();
+  }, [fetchCaptcha]);
 
   // Live availability check with debounce
   useEffect(() => {
@@ -71,20 +91,25 @@ export default function SignupPage() {
       return;
     }
 
-    if (!captchaToken) {
-      setError("Please complete the CAPTCHA verification.");
+    if (!captchaAnswer.trim()) {
+      setError("Please type the CAPTCHA word shown above.");
       return;
     }
 
     setLoading(true);
     try {
-      const returnedEmail = await signup(username, email, password, captchaToken);
-      setLocation(`/verify-email?email=${encodeURIComponent(returnedEmail)}`);
+      const returnedEmail = await signup(username, email, password, captchaId, captchaAnswer.trim());
+      if (returnedEmail) {
+        // OTP verification required
+        setLocation(`/verify-email?email=${encodeURIComponent(returnedEmail)}`);
+      } else {
+        // Auto-verified, go straight to dashboard
+        setLocation("/dashboard");
+      }
     } catch (err) {
       const message = (err as Error).message;
       // Reset captcha on failure so user must re-verify
-      setCaptchaToken(null);
-      turnstileRef.current?.reset();
+      fetchCaptcha();
       if (message.toLowerCase().includes("username")) {
         setUsernameError("Username already taken. Try a different one.");
         setAvailability("taken");
@@ -175,24 +200,34 @@ export default function SignupPage() {
           />
 
           {/* CAPTCHA */}
-          <div className="flex justify-center">
-            <Turnstile
-              sitekey={import.meta.env.VITE_TURNSTILE_SITE_KEY || "1x00000000000000000000AA"}
-              onVerify={(token, bound) => {
-                setCaptchaToken(token);
-                turnstileRef.current = bound;
-              }}
-              onExpire={(_token, bound) => {
-                setCaptchaToken(null);
-                turnstileRef.current = bound;
-              }}
-              theme="light"
+          <div className="space-y-2">
+            <p className="text-xs text-muted-foreground text-center">Type the word below to verify you're human</p>
+            <div className="flex items-center justify-center gap-2">
+              <span className="select-none rounded-lg border bg-muted px-4 py-2 font-mono text-lg font-bold tracking-widest">
+                {captchaLoading ? "…" : captchaWord}
+              </span>
+              <button
+                type="button"
+                onClick={fetchCaptcha}
+                disabled={captchaLoading}
+                className="rounded-md p-1.5 text-muted-foreground hover:bg-muted transition-colors"
+                aria-label="Refresh CAPTCHA"
+              >
+                <RefreshCw className={`h-4 w-4 ${captchaLoading ? "animate-spin" : ""}`} />
+              </button>
+            </div>
+            <Input
+              placeholder="Type the word shown above"
+              value={captchaAnswer}
+              onChange={(e) => setCaptchaAnswer(e.target.value)}
+              autoComplete="off"
+              className="text-center"
             />
           </div>
 
           <Button
             className="w-full rounded-xl"
-            disabled={loading || availability === "taken" || !captchaToken}
+            disabled={loading || availability === "taken" || !captchaAnswer.trim()}
           >
             {loading ? "Creating account…" : "Create Account"}
           </Button>

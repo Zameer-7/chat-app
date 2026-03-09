@@ -12,7 +12,7 @@ type AuthContextValue = {
   user: SafeUser | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  signup: (username: string, email: string, password: string, captchaToken: string) => Promise<string>;
+  signup: (username: string, email: string, password: string, captchaId: string, captchaAnswer: string) => Promise<string | null>;
   verifyEmail: (email: string, otp: string) => Promise<void>;
   setUser: (user: SafeUser) => void;
   logout: () => void;
@@ -72,9 +72,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setToken(result.token);
         setUserState(result.user);
       },
-      async signup(username: string, email: string, password: string, captchaToken: string) {
-        const result = await signupApi({ username, email, password, captchaToken });
-        // Signup now requires email verification — return email for redirect
+      async signup(username: string, email: string, password: string, captchaId: string, captchaAnswer: string) {
+        const result = await signupApi({ username, email, password, captchaId, captchaAnswer });
+        if ("token" in result) {
+          // Email not configured — user was auto-verified
+          setToken(result.token);
+          setUserState(result.user);
+          return null;
+        }
+        // Email verification required — return email for redirect
         return result.email;
       },
       async verifyEmail(email: string, otp: string) {
