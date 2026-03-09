@@ -1,12 +1,44 @@
 import { format } from "date-fns";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { getMyProfile, updateMyProfile } from "@/services/profile-api";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Camera, Users, Hash, CalendarDays, RefreshCw } from "lucide-react";
+
+const BIO_MAX = 150;
+const FALLBACK_POLL_MS = 30_000;
+const AVATAR_MAX_SIZE = 512;
+
+function resizeImage(file: File, maxSize: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let { width, height } = img;
+      if (width > maxSize || height > maxSize) {
+        const ratio = Math.min(maxSize / width, maxSize / height);
+        width = Math.round(width * ratio);
+        height = Math.round(height * ratio);
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return reject(new Error("Canvas not supported"));
+      ctx.drawImage(img, 0, 0, width, height);
+      resolve(canvas.toDataURL("image/jpeg", 0.85));
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("Failed to load image"));
+    };
+    img.src = url;
+  });
+}
 
 function initials(name: string) {
   return name
@@ -18,15 +50,18 @@ function initials(name: string) {
 }
 
 export default function ProfilePage() {
-  const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
   const { setUser } = useAuth();
   const { toast } = useToast();
   const [bio, setBio] = useState("");
+  const [bioEditing, setBioEditing] = useState(false);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const { data: profile } = useQuery({
+  const { data: profile, refetch } = useQuery({
     queryKey: ["profile-me"],
     queryFn: getMyProfile,
+    refetchInterval: FALLBACK_POLL_MS,
   });
 
   useEffect(() => {
@@ -40,80 +75,179 @@ export default function ProfilePage() {
     onSuccess: (updated) => {
       setUser(updated);
       queryClient.invalidateQueries({ queryKey: ["profile-me"] });
-      toast({ title: "Profile updated successfully." });
+      setAvatarPreview(null);
+      setBioEditing(false);
+      toast({ title: "Profile updated" });
     },
     onError: (err) => {
       toast({ title: "Update failed", description: (err as Error).message, variant: "destructive" });
     },
   });
 
-  const handleAvatarFile = async (file: File) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      mutation.mutate({ avatarUrl: String(reader.result || "") });
-    };
-    reader.readAsDataURL(file);
-  };
+  const handleAvatarFile = useCallback(async (file: File) => {
+    if (!file.type.startsWith("image/")) {
+      toast({ title: "Please select an image file", variant: "destructive" });
+      return;
+    }
+    try {
+      const resized = await resizeImage(file, AVATAR_MAX_SIZE);
+      setAvatarPreview(resized);
+      mutation.mutate({ avatarUrl: resized });
+    } catch {
+      toast({ title: "Failed to process image", variant: "destructive" });
+    }
+  }, [mutation, toast]);
 
   if (!profile) {
-    return <div className="max-w-lg mx-auto rounded-xl bg-white dark:bg-gray-800 dark:text-gray-100 p-6 shadow-md">Loading profile...</div>;
+    return (
+      <div className="flex min-h-[50vh] items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+      </div>
+    );
   }
 
+  const displayAvatar = avatarPreview || profile.avatarUrl;
+
   return (
-    <div className="max-w-lg mx-auto rounded-xl bg-white dark:bg-gray-800 dark:text-gray-100 p-6 shadow-md space-y-5">
-      <h2 className="text-2xl font-black">Profile</h2>
+    <div className="mx-auto max-w-md px-4 py-6 space-y-6">
+      {/* Profile Card */}
+      <div className="rounded-2xl bg-white dark:bg-gray-800 shadow-lg overflow-hidden">
+        {/* Banner gradient */}
+        <div className="h-24 bg-gradient-to-r from-teal-400 via-emerald-400 to-green-500" />
 
-      <div className="flex flex-col items-center gap-3">
-        {profile.avatarUrl ? (
-          <img src={profile.avatarUrl} alt="Avatar" className="h-24 w-24 rounded-full object-cover border" />
-        ) : (
-          <div className="h-24 w-24 rounded-full bg-gradient-to-r from-green-400 to-teal-500 text-white grid place-items-center text-3xl font-bold">
-            {initials(profile.nickname)}
+        {/* Avatar + Name */}
+        <div className="flex flex-col items-center -mt-14 pb-6 px-6">
+          <div className="relative group">
+            {displayAvatar ? (
+              <img
+                src={displayAvatar}
+                alt="Avatar"
+                className="h-28 w-28 rounded-full object-cover border-4 border-white dark:border-gray-800 shadow-md"
+              />
+            ) : (
+              <div className="h-28 w-28 rounded-full bg-gradient-to-br from-teal-400 to-emerald-600 text-white grid place-items-center text-4xl font-bold border-4 border-white dark:border-gray-800 shadow-md select-none">
+                {initials(profile.nickname || profile.username)}
+              </div>
+            )}
+            <button
+              type="button"
+              className="absolute inset-0 rounded-full bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer"
+              onClick={() => fileInputRef.current?.click()}
+              aria-label="Change profile picture"
+            >
+              <Camera className="h-6 w-6 text-white" />
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              className="hidden"
+              accept="image/*"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) handleAvatarFile(file);
+                e.target.value = "";
+              }}
+            />
           </div>
+
+          <h2 className="mt-3 text-xl font-black text-gray-900 dark:text-gray-50">
+            {profile.nickname}
+          </h2>
+          <p className="text-sm text-muted-foreground">@{profile.username}</p>
+        </div>
+      </div>
+
+      {/* Bio Section */}
+      <div className="rounded-2xl bg-white dark:bg-gray-800 shadow-md p-5">
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-50">About</h3>
+          {!bioEditing && (
+            <button
+              type="button"
+              className="text-xs text-primary hover:underline"
+              onClick={() => setBioEditing(true)}
+            >
+              Edit
+            </button>
+          )}
+        </div>
+
+        {bioEditing ? (
+          <div className="space-y-2">
+            <Textarea
+              placeholder="Tell people about yourself..."
+              value={bio}
+              onChange={(e) => setBio(e.target.value.slice(0, BIO_MAX))}
+              maxLength={BIO_MAX}
+              rows={3}
+              className="resize-none text-sm"
+            />
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">{bio.length}/{BIO_MAX}</span>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    setBio(profile.bio || "");
+                    setBioEditing(false);
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => mutation.mutate({ bio })}
+                  disabled={mutation.isPending}
+                >
+                  {mutation.isPending ? "Saving…" : "Save"}
+                </Button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <p className="text-sm text-gray-600 dark:text-gray-300">
+            {profile.bio || <span className="italic text-muted-foreground">No bio yet</span>}
+          </p>
         )}
-
-        <label className="text-sm text-primary underline cursor-pointer">
-          Upload picture
-          <input
-            type="file"
-            className="hidden"
-            accept="image/*"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) handleAvatarFile(file);
-            }}
-          />
-        </label>
-
-        <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs ${profile.isOnline ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" : "bg-muted text-muted-foreground"}`}>
-          <span className={`h-2 w-2 rounded-full ${profile.isOnline ? "bg-emerald-500" : "bg-gray-400"}`} />
-          {profile.isOnline ? "Online" : `Last seen ${format(new Date(profile.lastSeen), "dd MMM yyyy, HH:mm")}`}
-        </span>
       </div>
 
-      <div className="space-y-2 text-sm text-gray-700 dark:text-gray-300">
-        <p><span className="font-semibold text-gray-900 dark:text-gray-100">Nickname:</span> {profile.nickname}</p>
-        <p><span className="font-semibold text-gray-900 dark:text-gray-100">Username:</span> {profile.username}</p>
-        <p><span className="font-semibold text-gray-900 dark:text-gray-100">Email:</span> {profile.email}</p>
-        <p><span className="font-semibold text-gray-900 dark:text-gray-100">User ID:</span> {profile.id}</p>
-        <p><span className="font-semibold text-gray-900 dark:text-gray-100">Member Since:</span> {format(new Date(profile.createdAt), "MMM yyyy")}</p>
-        <p><span className="font-semibold text-gray-900 dark:text-gray-100">Last username change:</span> {profile.usernameLastChanged ? format(new Date(profile.usernameLastChanged), "dd MMM yyyy") : "Never"}</p>
-        <p><span className="font-semibold text-gray-900 dark:text-gray-100">Last nickname change:</span> {profile.nicknameLastChanged ? format(new Date(profile.nicknameLastChanged), "dd MMM yyyy") : "Never"}</p>
-        <p><span className="font-semibold text-gray-900 dark:text-gray-100">Friends:</span> {profile.friendCount}</p>
-        <p><span className="font-semibold text-gray-900 dark:text-gray-100">Rooms joined:</span> {profile.roomCount}</p>
-      </div>
+      {/* Stats */}
+      <div className="rounded-2xl bg-white dark:bg-gray-800 shadow-md p-5">
+        <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-50 mb-3">Info</h3>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center">
+              <Users className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+            </div>
+            <div>
+              <p className="text-lg font-bold leading-none text-gray-900 dark:text-gray-50">{profile.friendCount}</p>
+              <p className="text-xs text-muted-foreground">Friends</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-violet-100 dark:bg-violet-900/40 flex items-center justify-center">
+              <Hash className="h-4 w-4 text-violet-600 dark:text-violet-400" />
+            </div>
+            <div>
+              <p className="text-lg font-bold leading-none text-gray-900 dark:text-gray-50">{profile.roomCount}</p>
+              <p className="text-xs text-muted-foreground">Rooms Joined</p>
+            </div>
+          </div>
+        </div>
 
-      <div className="space-y-2">
-        <Input
-          placeholder="Add a short bio"
-          value={bio}
-          onChange={(e) => setBio(e.target.value)}
-          maxLength={280}
-        />
-        <Button onClick={() => mutation.mutate({ bio })} disabled={mutation.isPending}>Save Bio</Button>
+        <div className="mt-4 pt-4 border-t flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-emerald-100 dark:bg-emerald-900/40 flex items-center justify-center">
+            <CalendarDays className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+          </div>
+          <div>
+            <p className="text-sm font-medium text-gray-900 dark:text-gray-50">
+              {format(new Date(profile.createdAt), "MMMM yyyy")}
+            </p>
+            <p className="text-xs text-muted-foreground">Member since</p>
+          </div>
+        </div>
       </div>
-
-      <Button variant="secondary" onClick={() => setLocation("/settings")}>Edit Profile</Button>
     </div>
   );
 }

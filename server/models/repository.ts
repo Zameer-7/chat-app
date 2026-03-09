@@ -165,26 +165,26 @@ export const repository = {
     `);
 
     const roomResult = await db.execute(sql`
-      select count(distinct room_id)::int as "roomCount"
-      from messages
-      where sender_id = ${userId} and room_id is not null
-    `);
-
-    const msgResult = await db.execute(sql`
-      select count(*)::int as "messageCount"
-      from messages
-      where sender_id = ${userId} and deleted = false
+      select count(*)::int as "roomCount"
+      from user_rooms
+      where user_id = ${userId} and left_at is null
     `);
 
     const friendAgg = friendResult.rows[0] as { friendCount: number } | undefined;
     const roomAgg = roomResult.rows[0] as { roomCount: number } | undefined;
-    const msgAgg = msgResult.rows[0] as { messageCount: number } | undefined;
 
+    const safe = toSafeUser(user);
     return {
-      ...toSafeUser(user),
+      username: safe.username,
+      nickname: safe.nickname,
+      avatarUrl: safe.avatarUrl,
+      bio: safe.bio,
+      chatTheme: safe.chatTheme,
+      isOnline: safe.isOnline,
+      lastSeen: safe.lastSeen,
+      createdAt: safe.createdAt,
       friendCount: friendAgg?.friendCount ?? 0,
       roomCount: roomAgg?.roomCount ?? 0,
-      messageCount: msgAgg?.messageCount ?? 0,
     };
   },
 

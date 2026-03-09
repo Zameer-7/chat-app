@@ -149,7 +149,7 @@ export const updateThemeSchema = z.object({
 
 export const updateProfileMetaSchema = z.object({
   avatarUrl: z.string().max(200000).optional(),
-  bio: z.string().max(280).optional(),
+  bio: z.string().max(150).optional(),
 });
 
 export type User = typeof users.$inferSelect;

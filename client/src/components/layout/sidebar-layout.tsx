@@ -150,16 +150,20 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
 
         {/* User Card */}
         <div className="flex items-center gap-3 px-4 py-4 border-b border-white/10">
-          <div className="relative">
-            <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center text-sm font-bold text-primary-foreground shrink-0 select-none">
+          {user?.avatarUrl ? (
+            <img
+              src={user.avatarUrl}
+              alt={user.nickname || user.username}
+              className="w-10 h-10 rounded-full object-cover shrink-0"
+            />
+          ) : (
+            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-teal-400 to-emerald-600 flex items-center justify-center text-sm font-bold text-white shrink-0 select-none">
               {getInitials(user?.nickname ?? user?.username)}
             </div>
-            {/* Online dot */}
-            <span className="absolute bottom-0 right-0 block h-2.5 w-2.5 rounded-full bg-green-400 ring-2 ring-gray-900" />
-          </div>
+          )}
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold text-white">{user?.nickname || user?.username}</p>
-            <p className="truncate text-xs text-white/50">Online</p>
+            <p className="truncate text-xs text-white/50">@{user?.username}</p>
           </div>
         </div>
 

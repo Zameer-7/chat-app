@@ -4,6 +4,7 @@ import { repository } from "../models/repository";
 import { getOnlineUsersForRoomSockets } from "../websocket/notifier";
 import { broadcastToRoom } from "../websocket/index";
 import { emitToUser } from "../websocket/notifier";
+import { invalidateProfileCache } from "./profile";
 
 export function registerRoomRoutes(app: Express) {
   app.post("/api/rooms", authMiddleware, async (req: AuthedRequest, res) => {
@@ -11,6 +12,8 @@ export function registerRoomRoutes(app: Express) {
     const room = await repository.createRoom(req.user!.userId, roomName);
     await repository.joinRoom(req.user!.userId, room.id);
     broadcastToRoom(room.id, { type: "user_joined", roomId: room.id, userId: req.user!.userId });
+    invalidateProfileCache(req.user!.userId);
+    emitToUser(req.user!.userId, { type: "profile_updated" });
     return res.status(201).json(room);
   });
 
@@ -78,6 +81,8 @@ export function registerRoomRoutes(app: Express) {
     }
     const joined = await repository.joinRoom(req.user!.userId, roomId);
     broadcastToRoom(roomId, { type: "user_joined", roomId, userId: req.user!.userId });
+    invalidateProfileCache(req.user!.userId);
+    emitToUser(req.user!.userId, { type: "profile_updated" });
     return res.json(joined);
   });
 
@@ -85,6 +90,8 @@ export function registerRoomRoutes(app: Express) {
     const roomId = String(req.params.id);
     await repository.leaveRoom(req.user!.userId, roomId);
     broadcastToRoom(roomId, { type: "user_left", roomId, userId: req.user!.userId });
+    invalidateProfileCache(req.user!.userId);
+    emitToUser(req.user!.userId, { type: "profile_updated" });
     return res.json({ message: "You left this room" });
   });
 
@@ -136,6 +143,8 @@ export function registerRoomRoutes(app: Express) {
     for (const userId of added) {
       broadcastToRoom(roomId, { type: "user_joined", roomId, userId });
       emitToUser(userId, { type: "room_invite", roomId, roomName: room.roomName, invitedBy: req.user!.userId });
+      invalidateProfileCache(userId);
+      emitToUser(userId, { type: "profile_updated" });
     }
     return res.json({ added: added.length });
   });
@@ -160,6 +169,8 @@ export function registerRoomRoutes(app: Express) {
     await repository.leaveRoom(userId, roomId);
     broadcastToRoom(roomId, { type: "user_left", roomId, userId });
     emitToUser(userId, { type: "removed_from_room", roomId, roomName: room.roomName });
+    invalidateProfileCache(userId);
+    emitToUser(userId, { type: "profile_updated" });
     return res.json({ message: "Member removed" });
   });
 }

@@ -1,10 +1,17 @@
 import { api } from "@shared/routes";
 import { authFetch, type SafeUser } from "./api";
 
-export type ProfileResponse = SafeUser & {
+export type ProfileResponse = {
+  username: string;
+  nickname: string;
+  avatarUrl: string | null;
+  bio: string | null;
+  chatTheme: string;
+  isOnline: boolean;
+  lastSeen: string;
+  createdAt: string;
   friendCount: number;
   roomCount: number;
-  messageCount: number;
 };
 
 export function getMyProfile() {

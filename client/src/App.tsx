@@ -135,6 +135,7 @@ function GlobalEvents() {
       queryClient.invalidateQueries({ queryKey: ["friends"] });
       queryClient.invalidateQueries({ queryKey: ["outgoing-friend-requests"] });
       queryClient.invalidateQueries({ queryKey: ["friend-requests-count"] });
+      queryClient.invalidateQueries({ queryKey: ["profile-me"] });
     }
 
     // Show foreground notification for incoming DMs when not in that chat
@@ -184,18 +185,27 @@ function GlobalEvents() {
       queryClient.invalidateQueries({ queryKey: ["friends"] });
     }
 
+    // Profile stats changed (room join/leave, friend accepted)
+    if (lastEvent.type === "profile_updated") {
+      queryClient.invalidateQueries({ queryKey: ["profile-me"] });
+      queryClient.invalidateQueries({ queryKey: ["profile"] });
+    }
+
     // User joined/left room — refresh member lists
     if (lastEvent.type === "user_joined" || lastEvent.type === "user_left") {
       if (lastEvent.roomId) {
         queryClient.invalidateQueries({ queryKey: ["room-members", lastEvent.roomId] });
         queryClient.invalidateQueries({ queryKey: ["room-stats", lastEvent.roomId] });
       }
+      queryClient.invalidateQueries({ queryKey: ["joinedRooms"] });
+      queryClient.invalidateQueries({ queryKey: ["joined-rooms"] });
     }
 
     // Room invite — refresh joined rooms
     if (lastEvent.type === "room_invite") {
       queryClient.invalidateQueries({ queryKey: ["joined-rooms"] });
       queryClient.invalidateQueries({ queryKey: ["joinedRooms"] });
+      queryClient.invalidateQueries({ queryKey: ["profile-me"] });
       if (notifPermission === "granted") {
         new Notification("Room Invite \u2022 Vibely", {
           body: `You were added to ${lastEvent.roomName || "a room"}`,

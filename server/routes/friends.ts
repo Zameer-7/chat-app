@@ -3,6 +3,7 @@ import { sendFriendRequestSchema, updateFriendRequestSchema } from "@shared/sche
 import { authMiddleware, type AuthedRequest } from "../middleware/auth";
 import { repository } from "../models/repository";
 import { emitToUser } from "../websocket/notifier";
+import { invalidateProfileCache } from "./profile";
 
 export function registerFriendRoutes(app: Express) {
   app.get("/api/friends", authMiddleware, async (req: AuthedRequest, res) => {
@@ -95,6 +96,11 @@ export function registerFriendRoutes(app: Express) {
         type: "friend_request_accepted",
         request: updated,
       });
+      // Update both users' profile stats
+      invalidateProfileCache(updated.senderId);
+      invalidateProfileCache(req.user!.userId);
+      emitToUser(updated.senderId, { type: "profile_updated" });
+      emitToUser(req.user!.userId, { type: "profile_updated" });
     }
 
     return res.json(updated);
