@@ -13,6 +13,14 @@ export function buildApiUrl(path: string) {
   return `${API_URL}${path}`;
 }
 
+/** Resolve a server-relative URL (e.g. /uploads/img.jpg) to an absolute URL */
+export function resolveMediaUrl(url: string | null | undefined): string {
+  if (!url) return "";
+  if (/^https?:\/\//i.test(url) || /^data:/i.test(url)) return url;
+  // If API_URL is set (separate backend), prefix it; otherwise it's same-origin
+  return API_URL ? `${API_URL}${url}` : url;
+}
+
 export function getWebSocketBaseUrl() {
   const configuredWsUrl = (import.meta.env.VITE_WS_BASE_URL || "").replace(/\/+$/, "");
   if (configuredWsUrl) {

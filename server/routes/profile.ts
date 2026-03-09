@@ -43,4 +43,13 @@ export function registerProfileRoutes(app: Express) {
     invalidateProfileCache(req.user!.userId);
     return res.json(updated);
   });
+
+  app.delete("/api/profile/avatar", authMiddleware, async (req: AuthedRequest, res) => {
+    const updated = await repository.updateProfileMeta(req.user!.userId, { avatarUrl: "" });
+    if (!updated) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    invalidateProfileCache(req.user!.userId);
+    return res.json(updated);
+  });
 }

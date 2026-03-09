@@ -8,6 +8,11 @@
   status = 200
 
 [[redirects]]
+  from = "/uploads/*"
+  to = "https://chat-app-als4.onrender.com/uploads/:splat"
+  status = 200
+
+[[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200

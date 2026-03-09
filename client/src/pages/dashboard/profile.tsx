@@ -6,7 +6,14 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Camera, Users, Hash, CalendarDays, RefreshCw } from "lucide-react";
+import { Camera, Users, Hash, CalendarDays, MoreVertical, Trash2, Upload } from "lucide-react";
+import { deleteAvatar } from "@/services/profile-api";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 const BIO_MAX = 150;
 const FALLBACK_POLL_MS = 30_000;
@@ -84,6 +91,19 @@ export default function ProfilePage() {
     },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: deleteAvatar,
+    onSuccess: (updated) => {
+      setUser(updated);
+      queryClient.invalidateQueries({ queryKey: ["profile-me"] });
+      setAvatarPreview(null);
+      toast({ title: "Profile picture removed" });
+    },
+    onError: (err) => {
+      toast({ title: "Failed to remove picture", description: (err as Error).message, variant: "destructive" });
+    },
+  });
+
   const handleAvatarFile = useCallback(async (file: File) => {
     if (!file.type.startsWith("image/")) {
       toast({ title: "Please select an image file", variant: "destructive" });
@@ -129,14 +149,33 @@ export default function ProfilePage() {
                 {initials(profile.nickname || profile.username)}
               </div>
             )}
-            <button
-              type="button"
-              className="absolute inset-0 rounded-full bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer"
-              onClick={() => fileInputRef.current?.click()}
-              aria-label="Change profile picture"
-            >
-              <Camera className="h-6 w-6 text-white" />
-            </button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className="absolute -bottom-1 -right-1 h-8 w-8 rounded-full bg-white dark:bg-gray-700 shadow-md border border-gray-200 dark:border-gray-600 flex items-center justify-center cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
+                  aria-label="Profile picture options"
+                >
+                  <MoreVertical className="h-4 w-4 text-gray-600 dark:text-gray-300" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="center" sideOffset={8}>
+                <DropdownMenuItem onClick={() => fileInputRef.current?.click()}>
+                  <Upload className="h-4 w-4 mr-2" />
+                  Upload new picture
+                </DropdownMenuItem>
+                {displayAvatar && (
+                  <DropdownMenuItem
+                    className="text-destructive focus:text-destructive"
+                    onClick={() => deleteMutation.mutate()}
+                    disabled={deleteMutation.isPending}
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Delete profile picture
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
             <input
               ref={fileInputRef}
               type="file"

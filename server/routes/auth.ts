@@ -58,7 +58,7 @@ const OTP_EXPIRY_MINUTES = 10;
 
 const signupLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5,
+  max: 20,
   message: { message: "Too many signup attempts. Please try again later." },
   standardHeaders: true,
   legacyHeaders: false,

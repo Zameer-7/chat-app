@@ -2,6 +2,7 @@ import { format } from "date-fns";
 import { CheckSquare, ChevronDown, Square, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChatMessage } from "@/services/chat-api";
+import { resolveMediaUrl } from "@/config/api";
 
 type MenuState = { messageId: number; x: number; y: number } | null;
 type ReactionMenuState = { messageId: number; x: number; y: number } | null;
@@ -347,11 +348,11 @@ export function ChatWindow({
                   <img src={message.gifUrl} alt="gif" className="max-h-56 w-full rounded-lg object-cover" />
                 ) : message.messageType === "image" && (message.gifUrl || message.content) ? (
                   <img
-                    src={message.gifUrl || message.content}
+                    src={resolveMediaUrl(message.gifUrl || message.content)}
                     alt="Image"
                     className="max-w-[220px] max-h-64 rounded-lg object-cover cursor-pointer hover:opacity-90 transition-opacity"
                     loading="lazy"
-                    onClick={(e) => { e.stopPropagation(); setLightboxUrl(message.gifUrl || message.content); }}
+                    onClick={(e) => { e.stopPropagation(); setLightboxUrl(resolveMediaUrl(message.gifUrl || message.content)); }}
                   />
                 ) : (
                   <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>

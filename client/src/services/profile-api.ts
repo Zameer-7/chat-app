@@ -24,3 +24,9 @@ export function updateMyProfile(payload: { avatarUrl?: string; bio?: string }) {
     body: JSON.stringify(payload),
   });
 }
+
+export function deleteAvatar() {
+  return authFetch<SafeUser>(api.profile.deleteAvatar, {
+    method: "DELETE",
+  });
+}

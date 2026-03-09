@@ -1,9 +1,8 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Archive, MessageCircle, UserPlus } from "lucide-react";
-import { wsPaths } from "@shared/routes";
-import { useSocket } from "@/hooks/use-socket";
+import { useGlobalEvent } from "@/hooks/use-event-bus";
 import { getFriends, getFriendsStatus, getChatSettings, getUnreadCounts, type Friend, type ChatSetting } from "@/services/chat-api";
 import { Button } from "@/components/ui/button";
 
@@ -78,21 +77,17 @@ export default function FriendsPage() {
   const archivedFriends = friends.filter((f) => archivedFriendIds.has(f.id));
 
   const [onlineOverrides, setOnlineOverrides] = useState<Map<number, { isOnline: boolean; lastSeen?: string }>>(new Map());
-  const wsPath = useCallback((token: string) => wsPaths.user(token), []);
-  const { lastEvent } = useSocket(wsPath);
 
-  useEffect(() => {
-    if (lastEvent?.type === "presence_update") {
-      const uid = Number(lastEvent.userId);
-      const isOn = Boolean(lastEvent.isOnline);
-      const ls = lastEvent.lastSeen ? String(lastEvent.lastSeen) : undefined;
-      setOnlineOverrides((prev) => {
-        const next = new Map(prev);
-        next.set(uid, { isOnline: isOn, lastSeen: ls });
-        return next;
-      });
-    }
-  }, [lastEvent]);
+  useGlobalEvent("presence_update", (event) => {
+    const uid = Number(event.userId);
+    const isOn = Boolean(event.isOnline);
+    const ls = event.lastSeen ? String(event.lastSeen) : undefined;
+    setOnlineOverrides((prev) => {
+      const next = new Map(prev);
+      next.set(uid, { isOnline: isOn, lastSeen: ls });
+      return next;
+    });
+  });
 
   // Periodic presence fallback sync every 30 seconds
   const { data: statusList } = useQuery({
