@@ -26,8 +26,16 @@ app.use(express.urlencoded({ extended: false }));
 import pathModule from "path";
 app.use("/uploads", express.static(pathModule.resolve("uploads")));
 
+function getAllowedOrigin() {
+  const rawOrigin = process.env.CORS_ORIGIN;
+  if (!rawOrigin) return "*";
+
+  const sanitized = rawOrigin.trim().replace(/^['"]|['"]$/g, "");
+  return sanitized || "*";
+}
+
 app.use((req, res, next) => {
-  const allowedOrigin = process.env.CORS_ORIGIN || "*";
+  const allowedOrigin = getAllowedOrigin();
   res.header("Access-Control-Allow-Origin", allowedOrigin);
   res.header("Access-Control-Allow-Headers", "Authorization, Content-Type");
   res.header("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
