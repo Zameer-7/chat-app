@@ -73,6 +73,12 @@ export const api = {
     vapidPublicKey: "/api/push/vapid-public-key",
     subscribe: "/api/push/subscribe",
   },
+  notifications: {
+    list: "/api/notifications",
+    unreadCount: "/api/notifications/unread-count",
+    markRead: (id: number) => `/api/notifications/${id}/read`,
+    markAllRead: "/api/notifications/read-all",
+  },
 } as const;
 
 export const wsPaths = {

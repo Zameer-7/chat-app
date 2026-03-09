@@ -1,6 +1,7 @@
-import { and, eq, ilike, ne, or, sql, inArray } from "drizzle-orm";
+import { and, eq, ilike, ne, or, sql, inArray, desc } from "drizzle-orm";
 import { db } from "../db";
-import { friendRequests, messageHidden, messageReactions, messages, rooms, userRooms, users, chatSettings } from "@shared/schema";
+import { friendRequests, messageHidden, messageReactions, messages, rooms, userRooms, users, chatSettings, notifications } from "@shared/schema";
+import { cache, cacheKey, CACHE_TTL } from "../services/cache";
 
 const CHANGE_COOLDOWN_DAYS = 14;
 
@@ -89,6 +90,8 @@ export const repository = {
       .update(users)
       .set({ isOnline, lastSeen: new Date() })
       .where(eq(users.id, userId));
+    // Invalidate friend caches so presence is fresh
+    cache.del(cacheKey.friends(userId));
   },
 
   async updateTheme(userId: number, chatTheme: SafeUser["chatTheme"]) {
@@ -155,6 +158,9 @@ export const repository = {
   },
 
   async getProfileOverview(userId: number) {
+    const cached = cache.get<any>(cacheKey.profileOverview(userId));
+    if (cached) return cached;
+
     const [user] = await db.select().from(users).where(eq(users.id, userId));
     if (!user) return null;
 
@@ -174,7 +180,7 @@ export const repository = {
     const roomAgg = roomResult.rows[0] as { roomCount: number } | undefined;
 
     const safe = toSafeUser(user);
-    return {
+    const overview = {
       username: safe.username,
       nickname: safe.nickname,
       avatarUrl: safe.avatarUrl,
@@ -186,6 +192,8 @@ export const repository = {
       friendCount: friendAgg?.friendCount ?? 0,
       roomCount: roomAgg?.roomCount ?? 0,
     };
+    cache.set(cacheKey.profileOverview(userId), overview, CACHE_TTL.PROFILE_OVERVIEW);
+    return overview;
   },
 
   async setEmailOtp(userId: number, otp: string, expiry: Date) {
@@ -273,10 +281,16 @@ export const repository = {
         .set({ leftAt: null })
         .where(eq(userRooms.id, existing.id))
         .returning();
+      cache.del(cacheKey.roomStats(roomId));
+      cache.del(cacheKey.roomMembers(roomId));
+      cache.del(cacheKey.profileOverview(userId));
       return rejoined;
     }
 
     const [joined] = await db.insert(userRooms).values({ userId, roomId }).returning();
+    cache.del(cacheKey.roomStats(roomId));
+    cache.del(cacheKey.roomMembers(roomId));
+    cache.del(cacheKey.profileOverview(userId));
     return joined;
   },
 
@@ -286,6 +300,11 @@ export const repository = {
       .set({ leftAt: new Date() })
       .where(and(eq(userRooms.userId, userId), eq(userRooms.roomId, roomId), sql`${userRooms.leftAt} is null`))
       .returning();
+    if (left) {
+      cache.del(cacheKey.roomStats(roomId));
+      cache.del(cacheKey.roomMembers(roomId));
+      cache.del(cacheKey.profileOverview(userId));
+    }
     return left;
   },
 
@@ -337,6 +356,9 @@ export const repository = {
   },
 
   async getRoomStats(roomId: string) {
+    const cached = cache.get<any>(cacheKey.roomStats(roomId));
+    if (cached) return cached;
+
     const participantsResult = await db.execute(sql`
       select array_agg(user_id) as "participantIds",
              count(*)::int as "participants"
@@ -344,7 +366,9 @@ export const repository = {
       where room_id = ${roomId} and left_at is null
     `);
     const row = participantsResult.rows[0] as { participantIds: number[] | null; participants: number } | undefined;
-    return { participantIds: row?.participantIds || [], participants: row?.participants || 0 };
+    const stats = { participantIds: row?.participantIds || [], participants: row?.participants || 0 };
+    cache.set(cacheKey.roomStats(roomId), stats, CACHE_TTL.ROOM_STATS);
+    return stats;
   },
 
   async getRoomMessages(roomId: string, viewerId?: number, before?: string, limit = 30) {
@@ -476,20 +500,39 @@ export const repository = {
     if (!req) return null;
 
     const [updated] = await db.update(friendRequests).set({ status }).where(eq(friendRequests.id, requestId)).returning();
+
+    // Invalidate friend caches for both users
+    if (status === "accepted") {
+      cache.del(cacheKey.friends(req.senderId));
+      cache.del(cacheKey.friends(req.receiverId));
+      cache.del(cacheKey.friendIds(req.senderId));
+      cache.del(cacheKey.friendIds(req.receiverId));
+      cache.del(cacheKey.profileOverview(req.senderId));
+      cache.del(cacheKey.profileOverview(req.receiverId));
+    }
+
     return updated;
   },
 
   async listFriendIds(userId: number): Promise<number[]> {
+    const cached = cache.get<number[]>(cacheKey.friendIds(userId));
+    if (cached) return cached;
+
     const result = await db.execute(sql`
       select case when fr.sender_id = ${userId} then fr.receiver_id else fr.sender_id end as "friendId"
       from friend_requests fr
       where (fr.sender_id = ${userId} or fr.receiver_id = ${userId}) and fr.status = 'accepted'
     `);
-    return (result.rows as Array<{ friendId: number }>).map((r) => r.friendId);
+    const ids = (result.rows as Array<{ friendId: number }>).map((r) => r.friendId);
+    cache.set(cacheKey.friendIds(userId), ids, CACHE_TTL.FRIENDS_LIST);
+    return ids;
   },
 
   async listFriends(userId: number) {
-    return db.execute(sql`
+    const cached = cache.get<any>(cacheKey.friends(userId));
+    if (cached) return cached;
+
+    const result = await db.execute(sql`
       select u.id, u.email, u.username, u.nickname, u.avatar_url as "avatarUrl", u.bio, u.chat_theme as "chatTheme",
              u.nickname_last_changed as "nicknameLastChanged", u.username_last_changed as "usernameLastChanged",
              u.created_at as "createdAt", u.is_online as "isOnline", u.last_seen as "lastSeen"
@@ -498,6 +541,8 @@ export const repository = {
       where (fr.sender_id = ${userId} or fr.receiver_id = ${userId}) and fr.status = 'accepted'
       order by u.nickname asc
     `);
+    cache.set(cacheKey.friends(userId), result, CACHE_TTL.FRIENDS_LIST);
+    return result;
   },
 
   async getUnreadCounts(userId: number) {
@@ -857,5 +902,51 @@ export const repository = {
       return false;
     }
     return true;
+  },
+
+  // ─── Notifications ─────────────────────────────────────────────────
+
+  async createNotification(userId: number, type: string, message: string, referenceId?: string) {
+    const [notif] = await db.insert(notifications).values({
+      userId,
+      type,
+      message,
+      referenceId: referenceId ?? null,
+    }).returning();
+    return notif;
+  },
+
+  async getNotifications(userId: number, limit = 50) {
+    return db
+      .select()
+      .from(notifications)
+      .where(eq(notifications.userId, userId))
+      .orderBy(desc(notifications.createdAt))
+      .limit(limit);
+  },
+
+  async getUnreadNotificationCount(userId: number): Promise<number> {
+    const result = await db.execute(sql`
+      SELECT count(*)::int as "count"
+      FROM notifications
+      WHERE user_id = ${userId} AND is_read = false
+    `);
+    return (result.rows[0] as { count: number })?.count ?? 0;
+  },
+
+  async markNotificationRead(notificationId: number, userId: number) {
+    const [updated] = await db
+      .update(notifications)
+      .set({ isRead: true })
+      .where(and(eq(notifications.id, notificationId), eq(notifications.userId, userId)))
+      .returning();
+    return updated;
+  },
+
+  async markAllNotificationsRead(userId: number) {
+    await db
+      .update(notifications)
+      .set({ isRead: true })
+      .where(and(eq(notifications.userId, userId), eq(notifications.isRead, false)));
   },
 };

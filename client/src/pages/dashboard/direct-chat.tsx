@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRoute, useLocation } from "wouter";
-import { ArrowLeft, Archive, BellOff, Image, MoreVertical, Reply, Search, Trash2, X } from "lucide-react";
+import { ArrowLeft, Archive, BellOff, Image, MoreVertical, Reply, Search, Trash2, UserX, X } from "lucide-react";
 import { wsPaths } from "@shared/routes";
 import { useAuth } from "@/hooks/use-auth";
 import { useSocket } from "@/hooks/use-socket";
@@ -70,18 +70,18 @@ export default function DirectChatPage() {
     return () => document.removeEventListener("mousedown", handle);
   }, [showChatMenu]);
 
-  const { data: friends = [] } = useQuery({ queryKey: ["friends"], queryFn: getFriends });
+  const { data: friends = [], isLoading: friendsLoading } = useQuery({ queryKey: ["friends"], queryFn: getFriends });
   const friend = friends.find((f) => f.id === friendId);
 
   const { data: history = [] } = useQuery({
     queryKey: ["dm-messages", friendId],
     queryFn: () => getDirectMessages(friendId),
-    enabled: friendId > 0,
+    enabled: friendId > 0 && Boolean(friend),
     refetchOnMount: "always",
   });
 
   const wsPath = useCallback((token: string) => wsPaths.direct(friendId, token), [friendId]);
-  const { status, lastEvent, send } = useSocket(wsPath);
+  const { status, lastEvent, send } = useSocket(friend ? wsPath : () => "");
 
   const [liveMessages, setLiveMessages] = useState<ChatMessage[]>([]);
   const [typingUsers, setTypingUsers] = useState<string[]>([]);
@@ -258,7 +258,26 @@ export default function DirectChatPage() {
 
   return (
     <div className="space-y-4">
+      {/* Not-friends guard */}
+      {!friendsLoading && !friend && (
+        <div className="flex flex-col items-center justify-center gap-4 rounded-2xl border bg-card p-12 text-center">
+          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted">
+            <UserX className="h-7 w-7 text-muted-foreground" />
+          </div>
+          <div>
+            <p className="font-semibold">You can't message this user</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              You need to be friends before you can start a conversation.
+            </p>
+          </div>
+          <Button size="sm" onClick={() => setLocation("/search")}>
+            Find Friends
+          </Button>
+        </div>
+      )}
+
       {/* Header with back button */}
+      {friend && (<>
       <div className="flex items-center justify-between rounded-2xl border bg-card px-3 py-2">
         <div className="flex items-center gap-2 min-w-0">
           <button
@@ -552,6 +571,7 @@ export default function DirectChatPage() {
           <Button type="submit" disabled={!canSend} className="min-h-[44px] shrink-0 touch-manipulation">Send</Button>
         </form>
       </div>
+      </>)}
     </div>
   );
 }

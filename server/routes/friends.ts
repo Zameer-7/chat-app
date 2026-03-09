@@ -65,6 +65,14 @@ export function registerFriendRoutes(app: Express) {
         type: "friend_request_received",
         request,
       });
+      // Create notification for the receiver
+      await repository.createNotification(
+        receiverId,
+        "friend_request",
+        `${req.user!.username} sent you a friend request`,
+        String(req.user!.userId),
+      );
+      emitToUser(receiverId, { type: "notification", subType: "friend_request" });
       return res.status(201).json(request);
     } catch (error) {
       if ((error as any)?.code === "23505") {

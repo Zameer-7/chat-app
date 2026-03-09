@@ -5,6 +5,8 @@ import { repository } from "../models/repository";
 import { verifyToken } from "../middleware/auth";
 import { emitToUser, registerUserSocket, unregisterUserSocket } from "./notifier";
 import { sendPushNotification } from "../routes/push";
+import { roomMessageQueue, directMessageQueue } from "../services/message-queue";
+import { cache, cacheKey } from "../services/cache";
 
 type SocketUser = { userId: number; username: string };
 
@@ -165,28 +167,34 @@ export function registerWebSocket(server: Server) {
           const clientMessageId = body.clientMessageId ? String(body.clientMessageId) : undefined;
           const replyToId = body.replyToId ? Number(body.replyToId) : null;
           const effectiveRoomMsgType = body.messageType === "image" ? "image" : body.gifUrl ? "gif" : "text";
-          const msg = await repository.createRoomMessage({
-            roomId,
-            senderId: user.userId,
-            content: body.content ? String(body.content) : "",
-            messageType: effectiveRoomMsgType,
-            gifUrl: body.gifUrl ? String(body.gifUrl) : null,
-            replyToId: replyToId && Number.isInteger(replyToId) ? replyToId : null,
-          });
 
-          safeSend(ws, { type: "message_sent", messageId: msg.id, roomId, status: "sent", clientMessageId });
-
-          roomClients.get(roomId)?.forEach((client) => {
-            safeSend(client, { type: "room_message", clientMessageId, ...msg });
-          });
-
-          const audience = roomClients.get(roomId)?.size || 0;
-          if (audience > 1) {
-            await repository.updateMessageStatus(msg.id, "delivered");
-            roomClients.get(roomId)?.forEach((client) => {
-              safeSend(client, { type: "message_delivered", messageId: msg.id, roomId, status: "delivered", senderId: user.userId });
+          // Queue the DB write so messages are never lost under load
+          roomMessageQueue.enqueue(async () => {
+            const msg = await repository.createRoomMessage({
+              roomId,
+              senderId: user.userId,
+              content: body.content ? String(body.content) : "",
+              messageType: effectiveRoomMsgType,
+              gifUrl: body.gifUrl ? String(body.gifUrl) : null,
+              replyToId: replyToId && Number.isInteger(replyToId) ? replyToId : null,
             });
-          }
+
+            safeSend(ws, { type: "message_sent", messageId: msg.id, roomId, status: "sent", clientMessageId });
+
+            roomClients.get(roomId)?.forEach((client) => {
+              safeSend(client, { type: "room_message", clientMessageId, ...msg });
+            });
+
+            const audience = roomClients.get(roomId)?.size || 0;
+            if (audience > 1) {
+              await repository.updateMessageStatus(msg.id, "delivered");
+              roomClients.get(roomId)?.forEach((client) => {
+                safeSend(client, { type: "message_delivered", messageId: msg.id, roomId, status: "delivered", senderId: user.userId });
+              });
+            }
+          }).catch((err) => {
+            safeSend(ws, { type: "error", message: "Failed to send message" });
+          });
           return;
         }
 
@@ -200,62 +208,77 @@ export function registerWebSocket(server: Server) {
 
           const dmReplyToId = body.replyToId ? Number(body.replyToId) : null;
           const effectiveDmMsgType = body.messageType === "image" ? "image" : body.gifUrl ? "gif" : "text";
-          const msg = await repository.createDirectMessage(
-            user.userId,
-            friendId,
-            body.content ? String(body.content) : "",
-            effectiveDmMsgType,
-            body.gifUrl ? String(body.gifUrl) : null,
-            dmReplyToId && Number.isInteger(dmReplyToId) ? dmReplyToId : null,
-          );
-          safeSend(ws, { type: "message_sent", messageId: msg.id, status: "sent", senderId: user.userId, receiverId: friendId, clientMessageId });
 
-          const senderSockets = userConnections.get(user.userId) || new Set<WebSocket>();
-          const receiverSockets = userConnections.get(friendId) || new Set<WebSocket>();
-          const allSockets = Array.from(senderSockets).concat(Array.from(receiverSockets));
-          allSockets.forEach((client) => {
-            safeSend(client, { type: "direct_message", clientMessageId, ...msg });
-          });
+          // Queue the DB write so messages are never lost under load
+          directMessageQueue.enqueue(async () => {
+            const msg = await repository.createDirectMessage(
+              user.userId,
+              friendId,
+              body.content ? String(body.content) : "",
+              effectiveDmMsgType,
+              body.gifUrl ? String(body.gifUrl) : null,
+              dmReplyToId && Number.isInteger(dmReplyToId) ? dmReplyToId : null,
+            );
+            safeSend(ws, { type: "message_sent", messageId: msg.id, status: "sent", senderId: user.userId, receiverId: friendId, clientMessageId });
 
-          if (receiverSockets.size > 0) {
-            await repository.updateMessageStatus(msg.id, "delivered");
-            notifyMessageStatus(msg.id, {
-              type: "message_delivered",
-              messageId: msg.id,
-              senderId: user.userId,
-              receiverId: friendId,
-              status: "delivered",
+            const senderSockets = userConnections.get(user.userId) || new Set<WebSocket>();
+            const receiverSockets = userConnections.get(friendId) || new Set<WebSocket>();
+            const allSockets = Array.from(senderSockets).concat(Array.from(receiverSockets));
+            allSockets.forEach((client) => {
+              safeSend(client, { type: "direct_message", clientMessageId, ...msg });
             });
-          } else {
-            // Receiver is offline — send background push notification (check mute first)
-            const isMuted = await repository.isChatMuted(friendId, { friendId: user.userId });
-            if (!isMuted) {
-              const preview =
-                msg.messageType === "gif"
-                  ? "Sent a GIF 🎞️"
-                  : msg.messageType === "image"
-                    ? "Sent an image 🖼️"
-                    : (msg.content || "").slice(0, 120);
-              sendPushNotification(friendId, {
-                title: "New Message — Vibely",
-                body: `${msg.senderNickname}: ${preview}`,
-                url: `/dm/${user.userId}`,
-                tag: `dm-${user.userId}`,
-              }).catch(() => {});
+
+            if (receiverSockets.size > 0) {
+              await repository.updateMessageStatus(msg.id, "delivered");
+              notifyMessageStatus(msg.id, {
+                type: "message_delivered",
+                messageId: msg.id,
+                senderId: user.userId,
+                receiverId: friendId,
+                status: "delivered",
+              });
+            } else {
+              // Receiver is offline — send background push notification (check mute first)
+              const isMuted = await repository.isChatMuted(friendId, { friendId: user.userId });
+              if (!isMuted) {
+                const preview =
+                  msg.messageType === "gif"
+                    ? "Sent a GIF 🎞️"
+                    : msg.messageType === "image"
+                      ? "Sent an image 🖼️"
+                      : (msg.content || "").slice(0, 120);
+                sendPushNotification(friendId, {
+                  title: "New Message — Vibely",
+                  body: `${msg.senderNickname}: ${preview}`,
+                  url: `/dm/${user.userId}`,
+                  tag: `dm-${user.userId}`,
+                }).catch(() => {});
+              }
             }
-          }
 
-          const receiverActiveWithSender = directSubscribers.get(user.userId)?.has(friendId);
-          if (receiverActiveWithSender) {
-            await repository.updateMessageStatus(msg.id, "seen");
-            notifyMessageStatus(msg.id, {
-              type: "message_seen",
-              messageId: msg.id,
-              senderId: user.userId,
-              receiverId: friendId,
-              userId: friendId,
-            });
-          }
+            const receiverActiveWithSender = directSubscribers.get(user.userId)?.has(friendId);
+            if (receiverActiveWithSender) {
+              await repository.updateMessageStatus(msg.id, "seen");
+              notifyMessageStatus(msg.id, {
+                type: "message_seen",
+                messageId: msg.id,
+                senderId: user.userId,
+                receiverId: friendId,
+                userId: friendId,
+              });
+            }
+
+            // Create notification for the receiver
+            await repository.createNotification(
+              friendId,
+              "new_message",
+              `${msg.senderNickname}: ${msg.messageType === "gif" ? "Sent a GIF" : msg.messageType === "image" ? "Sent an image" : (msg.content || "").slice(0, 100)}`,
+              String(user.userId),
+            );
+            emitToUser(friendId, { type: "notification", subType: "new_message" });
+          }).catch((err) => {
+            safeSend(ws, { type: "error", message: "Failed to send message" });
+          });
           return;
         }
 

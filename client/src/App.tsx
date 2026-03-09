@@ -17,6 +17,7 @@ import DashboardPage from "@/pages/dashboard/dashboard";
 import RoomsPage from "@/pages/dashboard/rooms";
 import FriendsPage from "@/pages/dashboard/friends";
 import FriendRequestsPage from "@/pages/dashboard/friend-requests";
+import NotificationsPage from "@/pages/dashboard/notifications";
 import SearchUsersPage from "@/pages/dashboard/search-users";
 import SettingsPage from "@/pages/dashboard/settings";
 import ProfilePage from "@/pages/dashboard/profile";
@@ -167,6 +168,11 @@ function Router() {
       <Route path="/friend-requests">
         <AuthGate>
           <FriendRequestsPage />
+        </AuthGate>
+      </Route>
+      <Route path="/notifications">
+        <AuthGate>
+          <NotificationsPage />
         </AuthGate>
       </Route>
       <Route path="/search">

@@ -176,6 +176,12 @@ export function EventBusProvider({ children }: { children: React.ReactNode }) {
     if (lastEvent.type === "chat_muted" || lastEvent.type === "chat_unmuted") {
       queryClient.invalidateQueries({ queryKey: ["chat-settings"] });
     }
+
+    // ─── notification (new persistent notification created server-side) ───
+    if (lastEvent.type === "notification") {
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      queryClient.invalidateQueries({ queryKey: ["notification-count"] });
+    }
   }, [lastEvent, user, queryClient, location, notifPermission, isChatMuted]);
 
   const value = useMemo(() => ({ subscribe, lastEvent }), [subscribe, lastEvent]);

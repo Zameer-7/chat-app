@@ -145,6 +145,14 @@ export function registerRoomRoutes(app: Express) {
       emitToUser(userId, { type: "room_invite", roomId, roomName: room.roomName, invitedBy: req.user!.userId });
       invalidateProfileCache(userId);
       emitToUser(userId, { type: "profile_updated" });
+      // Create notification for the invited user
+      await repository.createNotification(
+        userId,
+        "room_invite",
+        `You were added to ${room.roomName || "a room"}`,
+        roomId,
+      );
+      emitToUser(userId, { type: "notification", subType: "room_invite" });
     }
     return res.json({ added: added.length });
   });

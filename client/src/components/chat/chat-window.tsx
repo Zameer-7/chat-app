@@ -95,16 +95,29 @@ export function ChatWindow({
     el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
   }, []);
 
+  // Reset initial-load flag when switching chats (messages go empty)
+  useEffect(() => {
+    if (messages.length === 0) {
+      isInitialLoadRef.current = true;
+    }
+  }, [messages.length]);
+
   // Auto-scroll to bottom on initial load or new messages at bottom
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
 
     if (isInitialLoadRef.current && messages.length > 0) {
-      // Initial load: jump to bottom instantly
-      el.scrollTop = el.scrollHeight;
+      // Initial load: jump to bottom instantly, with rAF to ensure DOM is ready
       isInitialLoadRef.current = false;
-      return;
+      requestAnimationFrame(() => {
+        el.scrollTop = el.scrollHeight;
+      });
+      // Secondary scroll after images may have loaded
+      const timer = setTimeout(() => {
+        el.scrollTop = el.scrollHeight;
+      }, 300);
+      return () => clearTimeout(timer);
     }
 
     // If user is near bottom (within 150px), auto-scroll for new messages
@@ -237,7 +250,7 @@ export function ChatWindow({
           </div>
         </div>
       )}
-      <div ref={scrollRef} onScroll={handleScroll} className="h-[calc(100vh-200px)] md:h-[65vh] overflow-y-auto scroll-smooth rounded-2xl border bg-chat-pattern p-4 space-y-2">
+      <div ref={scrollRef} onScroll={handleScroll} className="h-[calc(100vh-200px)] md:h-[65vh] overflow-y-auto rounded-2xl border bg-chat-pattern p-4 space-y-2">
         {/* Loading / end-of-history indicator */}
         {hasMore === false && messages.length > 0 && (
           <p className="text-xs text-muted-foreground text-center py-2">No earlier messages</p>

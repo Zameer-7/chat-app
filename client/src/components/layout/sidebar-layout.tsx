@@ -1,9 +1,10 @@
 import { Link, useLocation } from "wouter";
-import { Home, Users, Search, Inbox, MessageCircle, LogOut, Settings, CircleUserRound, Menu, X, Download } from "lucide-react";
+import { Home, Users, Search, Inbox, MessageCircle, LogOut, Settings, CircleUserRound, Menu, X, Download, Bell } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { getUnreadCounts, getChatSettings, type ChatSetting } from "@/services/chat-api";
+import { getUnreadNotificationCount } from "@/services/notification-api";
 import { NovaLogo } from "./nova-logo";
 import { usePwa } from "@/hooks/use-pwa";
 
@@ -15,6 +16,7 @@ const mainNav = [
 
 const socialNav = [
   { href: "/friend-requests", label: "Friend Requests", icon: Inbox, badge: "friendRequests" as const },
+  { href: "/notifications", label: "Notifications", icon: Bell, badge: "notifications" as const },
   { href: "/search", label: "Search Users", icon: Search },
 ];
 
@@ -43,6 +45,12 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     queryKey: ["unread-counts"],
     queryFn: getUnreadCounts,
     refetchInterval: 15_000,
+  });
+
+  const { data: notifCount = 0 } = useQuery({
+    queryKey: ["notification-count"],
+    queryFn: getUnreadNotificationCount,
+    refetchInterval: 30_000,
   });
 
   const { data: chatSettingsList = [] } = useQuery({
@@ -182,7 +190,13 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
             <NavLink
               key={item.href}
               {...item}
-              badge={item.badge === "friendRequests" ? friendRequestCount : undefined}
+              badge={
+                item.badge === "friendRequests"
+                  ? friendRequestCount
+                  : item.badge === "notifications"
+                    ? notifCount
+                    : undefined
+              }
             />
           ))}
 

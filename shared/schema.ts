@@ -96,6 +96,16 @@ export const chatSettings = pgTable("chat_settings", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
+export const notifications = pgTable("notifications", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id),
+  type: text("type").notNull(),          // new_message | friend_request | room_invite
+  message: text("message").notNull(),
+  referenceId: text("reference_id"),      // e.g. friendId, roomId, messageId
+  isRead: boolean("is_read").notNull().default(false),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 export const insertUserSchema = createInsertSchema(users).pick({
   email: true,
   passwordHash: true,
@@ -157,3 +167,4 @@ export type InsertUser = z.infer<typeof insertUserSchema>;
 export type Room = typeof rooms.$inferSelect;
 export type FriendRequest = typeof friendRequests.$inferSelect;
 export type Message = typeof messages.$inferSelect;
+export type Notification = typeof notifications.$inferSelect;

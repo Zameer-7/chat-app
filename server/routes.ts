@@ -10,6 +10,7 @@ import { registerRoomRoutes } from "./routes/rooms";
 import { registerSettingsRoutes } from "./routes/settings";
 import { registerUserRoutes } from "./routes/users";
 import { registerChatSettingsRoutes } from "./routes/chat-settings";
+import { registerNotificationRoutes } from "./routes/notifications";
 import { registerWebSocket } from "./websocket";
 import { pool } from "./db";
 
@@ -74,7 +75,28 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_friend_requests_sender ON friend_requests(sender_id, status)`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_messages_sender ON messages(sender_id)`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_user_rooms_user ON user_rooms(user_id)`);
+  // Composite index for DM queries (sender + receiver)
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_messages_sender_receiver ON messages(sender_id, receiver_id)`);
+  // Index for receiver_id (used in unread counts and DM fetches)
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_messages_receiver ON messages(receiver_id)`);
+  // Index for message reactions lookup
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_message_reactions_message ON message_reactions(message_id)`);
+  // Index for message_hidden lookup
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_message_hidden_user ON message_hidden(message_id, user_id)`);
 
+  // Notifications table
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS notifications (
+      id SERIAL PRIMARY KEY,
+      user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      type TEXT NOT NULL,
+      message TEXT NOT NULL,
+      reference_id TEXT,
+      is_read BOOLEAN NOT NULL DEFAULT false,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, is_read, created_at DESC)`);
   registerAuthRoutes(app);
   registerUserRoutes(app);
   registerProfileRoutes(app);
@@ -84,6 +106,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   registerDirectMessageRoutes(app);
   registerMessageRoutes(app);
   registerChatSettingsRoutes(app);
+  registerNotificationRoutes(app);
   registerPushRoutes(app);
 
   registerWebSocket(httpServer);

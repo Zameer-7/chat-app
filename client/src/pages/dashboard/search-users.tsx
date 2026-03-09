@@ -82,7 +82,11 @@ export default function SearchUsersPage() {
                 <button
                   type="button"
                   className="flex items-center gap-3 min-w-0 text-left"
-                  onClick={() => setLocation(`/dm/${user.id}`)}
+                  onClick={() => {
+                    if (alreadyFriend) {
+                      setLocation(`/dm/${user.id}`);
+                    }
+                  }}
                 >
                   {user.avatarUrl ? (
                     <img src={user.avatarUrl} className="h-10 w-10 rounded-full object-cover shrink-0" alt={user.nickname} />
