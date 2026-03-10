@@ -22,6 +22,16 @@ export function registerFriendRoutes(app: Express) {
     return res.json(statuses);
   });
 
+  // Last message preview for each DM conversation
+  app.get("/api/friends/last-messages", authMiddleware, async (req: AuthedRequest, res) => {
+    try {
+      const previews = await repository.getLastMessagePreviews(req.user!.userId);
+      return res.json(previews);
+    } catch {
+      return res.status(500).json({ message: "Failed to fetch previews" });
+    }
+  });
+
   app.get("/api/unread-counts", authMiddleware, async (req: AuthedRequest, res) => {
     const counts = await repository.getUnreadCounts(req.user!.userId);
     const frResult = await repository.listIncomingFriendRequests(req.user!.userId);

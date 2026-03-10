@@ -13,11 +13,90 @@ function buildToken(user: { id: number; email: string; username: string }) {
 
 // ── Word CAPTCHA ──────────────────────────────────────────
 const CAPTCHA_WORDS = [
-  "sunshine", "mountain", "dolphin", "galaxy", "rainbow",
-  "thunder", "crystal", "phoenix", "garden", "breeze",
-  "forest", "river", "castle", "dragon", "falcon",
-  "meadow", "violet", "silver", "golden", "harbor",
-  "ocean", "planet", "rocket", "shadow", "temple",
+  // Nature & weather
+  "sunshine", "mountain", "rainbow", "thunder", "breeze",
+  "forest", "river", "meadow", "ocean", "garden",
+  "valley", "island", "desert", "glacier", "volcano",
+  "canyon", "waterfall", "sunrise", "sunset", "blizzard",
+  "tornado", "monsoon", "aurora", "eclipse", "horizon",
+  "lagoon", "prairie", "tundra", "savanna", "reef",
+  // Animals
+  "dolphin", "phoenix", "falcon", "panther", "tiger",
+  "penguin", "parrot", "jaguar", "cheetah", "mustang",
+  "buffalo", "sparrow", "condor", "lobster", "gazelle",
+  "leopard", "pelican", "rooster", "hamster", "giraffe",
+  "octopus", "peacock", "raccoon", "seahorse", "walrus",
+  // Space & science
+  "galaxy", "planet", "rocket", "nebula", "comet",
+  "neutron", "quasar", "photon", "pulsar", "meteor",
+  "cosmos", "gravity", "stellar", "orbital", "plasma",
+  // Objects & places
+  "crystal", "castle", "temple", "harbor", "bridge",
+  "lantern", "compass", "anchor", "beacon", "helmet",
+  "shield", "trophy", "marble", "candle", "banner",
+  "puzzle", "ticket", "basket", "pillar", "ribbon",
+  "mirror", "fountain", "chimney", "curtain", "blanket",
+  // Colors & gems
+  "violet", "silver", "golden", "scarlet", "crimson",
+  "indigo", "emerald", "topaz", "cobalt", "bronze",
+  "copper", "maroon", "ivory", "onyx", "sapphire",
+  // Food & drink
+  "mango", "waffle", "pretzel", "cherry", "walnut",
+  "almond", "ginger", "pepper", "butter", "cookie",
+  "muffin", "noodle", "pickle", "turnip", "coconut",
+  "papaya", "apricot", "cashew", "biscuit", "custard",
+  // Actions & abstract
+  "shadow", "spirit", "voyage", "wander", "summit",
+  "ripple", "flicker", "shimmer", "whisper", "dazzle",
+  "tumble", "flutter", "crackle", "sparkle", "thunder",
+  "rumble", "breaker", "sprinter", "climber", "juggler",
+  // Music & art
+  "melody", "rhythm", "canvas", "sketch", "sculpt",
+  "stanza", "chorus", "sonnet", "lyric", "ballad",
+  // Misc fun words
+  "wizard", "knight", "pirate", "viking", "ninja",
+  "samurai", "legend", "cipher", "riddle", "mystic",
+  "voyager", "pioneer", "crusader", "outlaw", "nomad",
+  "captain", "jester", "oracle", "sentinel", "phantom",
+  // More words — buildings & vehicles
+  "fortress", "mansion", "cottage", "highway", "tunnel",
+  "railway", "trolley", "scooter", "tanker", "blimp",
+  "chariot", "gondola", "frigate", "kayak", "trailer",
+  // Professions & people
+  "surgeon", "chemist", "sculptor", "plumber", "barista",
+  "rancher", "aviator", "sheriff", "marshal", "gladiator",
+  // Fabrics & materials
+  "velvet", "denim", "cotton", "granite", "bamboo",
+  "ceramic", "lumber", "platinum", "titanium", "kevlar",
+  // Plants & trees
+  "orchid", "cactus", "bamboo", "jasmine", "sequoia",
+  "willow", "cypress", "thistle", "clover", "hibiscus",
+  // Tools & tech
+  "hammer", "wrench", "chisel", "gadget", "modem",
+  "router", "laptop", "scanner", "turbine", "dynamo",
+  // Sports & games
+  "striker", "sprinter", "trophy", "javelin", "hurdle",
+  "archery", "cricket", "bowling", "fencing", "lacrosse",
+  // Emotions & traits
+  "courage", "wisdom", "harmony", "triumph", "resolve",
+  "valor", "patience", "tenacity", "devotion", "ambition",
+  // Clothing & accessories
+  "sandal", "bonnet", "turban", "mitten", "buckle",
+  "pendant", "brooch", "locket", "bracelet", "anklet",
+  // Instruments & sounds
+  "trumpet", "cymbal", "fiddle", "banjo", "ukulele",
+  "timpani", "maracas", "chime", "gong", "siren",
+  // Random letter combos (anti-bot)
+  "xbmtv", "qzrfw", "jnkpd", "hvlcg", "wytmx",
+  "dprkz", "fnbjq", "gxlvs", "mkrcw", "pzhdt",
+  "bvnxf", "cjwmr", "tqzgk", "xlpfn", "rhdwb",
+  "kfmtj", "zvncx", "wbqrk", "gjptl", "nxdsf",
+  "lrvbz", "ykcmw", "hdqpn", "btfxj", "mpgzr",
+  "fwknd", "qjxlv", "shbtp", "cmrzg", "vnkdf",
+  "xrptm", "jlbwf", "dgnkz", "kvhcx", "tzmrq",
+  "bxfwp", "njqrk", "gdvlm", "pxhcf", "wtnbz",
+  "rjkvm", "fxdqn", "lzhpw", "ctbjg", "mkxvr",
+  "qnwft", "hbzpd", "vjcmx", "gkrln", "xftwb",
 ];
 
 const CAPTCHA_SECRET = process.env.JWT_SECRET || "vibely-captcha-secret";

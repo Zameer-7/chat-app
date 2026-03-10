@@ -20,6 +20,7 @@ export const api = {
   friends: {
     list: "/api/friends",
     status: "/api/friends/status",
+    lastMessages: "/api/friends/last-messages",
   },
   unread: {
     counts: "/api/unread-counts",

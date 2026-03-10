@@ -86,9 +86,14 @@ export const repository = {
   },
 
   async setUserOnlineStatus(userId: number, isOnline: boolean) {
+    const updates: Record<string, unknown> = { isOnline };
+    // Only update lastSeen when going OFFLINE so it reflects actual last activity
+    if (!isOnline) {
+      updates.lastSeen = new Date();
+    }
     await db
       .update(users)
-      .set({ isOnline, lastSeen: new Date() })
+      .set(updates)
       .where(eq(users.id, userId));
     // Invalidate friend caches so presence is fresh
     cache.del(cacheKey.friends(userId));
@@ -585,6 +590,31 @@ export const repository = {
       dm: dmResult.rows as Array<{ friendId: number; count: number }>,
       rooms: roomResult.rows as Array<{ roomId: string; count: number }>,
     };
+  },
+
+  async getLastMessagePreviews(userId: number) {
+    const result = await db.execute(sql`
+      SELECT DISTINCT ON (friend_id)
+        friend_id as "friendId",
+        content,
+        message_type as "messageType",
+        sender_id as "senderId",
+        created_at as "createdAt"
+      FROM (
+        SELECT
+          CASE WHEN m.sender_id = ${userId} THEN m.receiver_id ELSE m.sender_id END as friend_id,
+          m.content, m.message_type, m.sender_id, m.created_at
+        FROM messages m
+        WHERE (m.sender_id = ${userId} OR m.receiver_id = ${userId})
+          AND m.room_id IS NULL
+          AND m.deleted = false
+          AND NOT EXISTS (
+            SELECT 1 FROM message_hidden mh WHERE mh.message_id = m.id AND mh.user_id = ${userId}
+          )
+      ) sub
+      ORDER BY friend_id, created_at DESC
+    `);
+    return result.rows as Array<{ friendId: number; content: string; messageType: string; senderId: number; createdAt: string }>;
   },
 
   async areFriends(userId: number, otherUserId: number) {
