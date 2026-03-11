@@ -367,16 +367,7 @@ export function registerAuthRoutes(app: Express) {
     return res.json({ success: true });
   });
 
-  // ── Login brute force protection ───────────────────────────
-  const loginLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 5,
-    message: { message: "Too many login attempts. Please try again after 15 minutes." },
-    standardHeaders: true,
-    legacyHeaders: false,
-  });
-
-  app.post("/api/auth/login", loginLimiter, async (req, res) => {
+  app.post("/api/auth/login", async (req, res) => {
     const parsed = loginSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({ message: parsed.error.issues[0]?.message || "Invalid input" });
