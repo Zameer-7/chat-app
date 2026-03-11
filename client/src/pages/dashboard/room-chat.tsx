@@ -149,7 +149,7 @@ export default function RoomChatPage() {
     staleTime: 60_000,
   });
 
-  const wsPath = useCallback((token: string) => wsPaths.room(roomId, token), [roomId]);
+  const wsPath = useCallback(() => wsPaths.room(roomId), [roomId]);
   const { status, lastEvent, send } = useSocket(wsPath);
 
   useEffect(() => {

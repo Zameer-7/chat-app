@@ -212,7 +212,7 @@ export function resetPassword(email: string, code: string, newPassword: string) 
 }
 
 export function getCaptcha() {
-  return authFetch<{ id: string; word: string }>(api.auth.captcha);
+  return authFetch<{ id: string; image: string }>(api.auth.captcha);
 }
 
 export function getCurrentUser() {

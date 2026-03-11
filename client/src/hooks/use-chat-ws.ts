@@ -6,7 +6,7 @@ export function useChatWebSocket(roomId: string, _username: string | null) {
   const [typingUsers] = useState<Set<string>>(new Set());
   const [onlineUsers] = useState<Record<string, { status: string; lastSeen?: string }>>({});
 
-  const wsPath = useCallback((token: string) => wsPaths.room(roomId, token), [roomId]);
+  const wsPath = useCallback(() => wsPaths.room(roomId), [roomId]);
   const { status, send } = useSocket(wsPath);
 
   return {

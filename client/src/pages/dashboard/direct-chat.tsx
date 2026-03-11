@@ -80,7 +80,7 @@ export default function DirectChatPage() {
     refetchOnMount: "always",
   });
 
-  const wsPath = useCallback((token: string) => wsPaths.direct(friendId, token), [friendId]);
+  const wsPath = useCallback(() => wsPaths.direct(friendId), [friendId]);
   const { status, lastEvent, send } = useSocket(friend ? wsPath : () => "");
 
   const [liveMessages, setLiveMessages] = useState<ChatMessage[]>([]);

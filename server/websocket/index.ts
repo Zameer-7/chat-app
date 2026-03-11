@@ -61,49 +61,69 @@ export function registerWebSocket(server: Server) {
   }
 
   server.on("upgrade", (request, socket, head) => {
-    const { pathname, query } = parse(request.url || "", true);
+    const { pathname } = parse(request.url || "", true);
     if (!pathname) {
       socket.destroy();
       return;
     }
 
-    const token = Array.isArray(query.token) ? query.token[0] : query.token;
-    if (!token) {
+    const roomMatch = pathname.match(/^\/ws\/room\/([^/]+)$/);
+    const directMatch = pathname.match(/^\/ws\/direct\/(\d+)$/);
+    const userMatch = pathname.match(/^\/ws\/user$/);
+
+    if (!roomMatch && !directMatch && !userMatch) {
       socket.destroy();
       return;
     }
 
-    try {
-      const payload = verifyToken(token);
-
-      const roomMatch = pathname.match(/^\/ws\/room\/([^/]+)$/);
-      const directMatch = pathname.match(/^\/ws\/direct\/(\d+)$/);
-      const userMatch = pathname.match(/^\/ws\/user$/);
-
-      if (!roomMatch && !directMatch && !userMatch) {
-        socket.destroy();
-        return;
-      }
-
-      wss.handleUpgrade(request, socket, head, (ws) => {
-        (ws as WebSocket & { meta?: { roomId?: string; friendId?: number; payload: SocketUser } }).meta = {
-          roomId: roomMatch?.[1],
-          friendId: directMatch ? Number(directMatch[1]) : undefined,
-          payload: { userId: payload.userId, username: payload.username },
-        };
-        wss.emit("connection", ws, request);
-      });
-    } catch {
-      socket.destroy();
-    }
+    wss.handleUpgrade(request, socket, head, (ws) => {
+      (ws as WebSocket & { meta?: { roomId?: string; friendId?: number; payload?: SocketUser; authenticated?: boolean } }).meta = {
+        roomId: roomMatch?.[1],
+        friendId: directMatch ? Number(directMatch[1]) : undefined,
+        authenticated: false,
+      };
+      wss.emit("connection", ws, request);
+    });
   });
 
-  wss.on("connection", async (ws: WebSocket & { meta?: { roomId?: string; friendId?: number; payload: SocketUser } }) => {
+  wss.on("connection", async (ws: WebSocket & { meta?: { roomId?: string; friendId?: number; payload?: SocketUser; authenticated?: boolean } }) => {
     if (!ws.meta) {
       ws.close();
       return;
     }
 
+    // Wait for the first message to authenticate
+    const authTimeout = setTimeout(() => {
+      safeSend(ws, { type: "error", message: "Authentication timeout" });
+      ws.close();
+    }, 10_000);
+
+    // Wrap the original message handler; first message must be auth
+    const originalMeta = ws.meta;
+    ws.once("message", async (raw) => {
+      clearTimeout(authTimeout);
+      try {
+        const body = JSON.parse(raw.toString("utf8"));
+        if (body.type !== "auth" || !body.token) {
+          safeSend(ws, { type: "error", message: "First message must be auth" });
+          ws.close();
+          return;
+        }
+
+        const payload = verifyToken(body.token);
+        originalMeta.payload = { userId: payload.userId, username: payload.username };
+        originalMeta.authenticated = true;
+
+        // Now run the post-auth setup
+        await setupAuthenticatedSocket(ws as WebSocket & { meta: { roomId?: string; friendId?: number; payload: SocketUser; authenticated: boolean } });
+      } catch {
+        safeSend(ws, { type: "error", message: "Invalid or expired token" });
+        ws.close();
+      }
+    });
+  });
+
+  async function setupAuthenticatedSocket(ws: WebSocket & { meta: { roomId?: string; friendId?: number; payload: SocketUser; authenticated: boolean } }) {
     const { roomId, friendId, payload } = ws.meta;
     socketUsers.set(ws, payload);
 
@@ -458,5 +478,5 @@ export function registerWebSocket(server: Server) {
         await markPresence(user.userId, false);
       }
     });
-  });
+  }
 }

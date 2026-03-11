@@ -4,21 +4,21 @@ import { getWebSocketBaseUrl } from "@/config/api";
 
 type SocketStatus = "connecting" | "connected" | "disconnected";
 
-export function useSocket(pathFactory: (token: string) => string) {
+export function useSocket(pathFactory: () => string) {
   const [status, setStatus] = useState<SocketStatus>("connecting");
   const [lastEvent, setLastEvent] = useState<any>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
-  const path = useMemo(() => {
-    const token = getToken();
-    if (!token) {
-      return null;
-    }
-    return pathFactory(token);
-  }, [pathFactory]);
+  const path = useMemo(() => pathFactory(), [pathFactory]);
 
   useEffect(() => {
     if (!path) {
+      setStatus("disconnected");
+      return;
+    }
+
+    const token = getToken();
+    if (!token) {
       setStatus("disconnected");
       return;
     }
@@ -30,12 +30,19 @@ export function useSocket(pathFactory: (token: string) => string) {
 
     function connect() {
       if (destroyed) return;
+      const currentToken = getToken();
+      if (!currentToken) {
+        setStatus("disconnected");
+        return;
+      }
       const ws = new WebSocket(`${wsBase}${path}`);
       wsRef.current = ws;
 
       ws.onopen = () => {
+        // Send auth token as first message (not in URL)
+        ws.send(JSON.stringify({ type: "auth", token: currentToken }));
         setStatus("connected");
-        reconnectDelay = 1000; // Reset backoff on successful connect
+        reconnectDelay = 1000;
         // Drain offline message queue for this connection
         const queueKey = `vibely-queue:${path}`;
         try {

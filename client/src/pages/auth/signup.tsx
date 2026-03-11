@@ -23,7 +23,7 @@ export default function SignupPage() {
   const [availability, setAvailability] = useState<"available" | "taken" | "checking" | null>(null);
   const [loading, setLoading] = useState(false);
   const [captchaId, setCaptchaId] = useState("");
-  const [captchaWord, setCaptchaWord] = useState("");
+  const [captchaImage, setCaptchaImage] = useState("");
   const [captchaAnswer, setCaptchaAnswer] = useState("");
   const [captchaLoading, setCaptchaLoading] = useState(false);
 
@@ -33,7 +33,7 @@ export default function SignupPage() {
     try {
       const data = await getCaptcha();
       setCaptchaId(data.id);
-      setCaptchaWord(data.word);
+      setCaptchaImage(data.image);
     } catch {
       setError("Failed to load CAPTCHA. Please refresh the page.");
     } finally {
@@ -209,11 +209,20 @@ export default function SignupPage() {
 
           {/* CAPTCHA */}
           <div className="space-y-2">
-            <p className="text-xs text-muted-foreground text-center">Type the word below to verify you're human</p>
+            <p className="text-xs text-muted-foreground text-center">Type the text below to verify you're human</p>
             <div className="flex items-center justify-center gap-2">
-              <span className="select-none rounded-lg border bg-muted px-4 py-2 font-mono text-lg font-bold tracking-widest">
-                {captchaLoading ? "…" : captchaWord}
-              </span>
+              {captchaLoading ? (
+                <div className="flex h-[70px] w-[200px] items-center justify-center rounded-lg border bg-muted">
+                  <span className="text-sm text-muted-foreground">Loading…</span>
+                </div>
+              ) : (
+                <img
+                  src={captchaImage}
+                  alt="CAPTCHA"
+                  className="h-[70px] w-[200px] rounded-lg border select-none pointer-events-none"
+                  draggable={false}
+                />
+              )}
               <button
                 type="button"
                 onClick={fetchCaptcha}
@@ -225,7 +234,7 @@ export default function SignupPage() {
               </button>
             </div>
             <Input
-              placeholder="Type the word shown above"
+              placeholder="Type the text shown above"
               value={captchaAnswer}
               onChange={(e) => setCaptchaAnswer(e.target.value)}
               autoComplete="off"

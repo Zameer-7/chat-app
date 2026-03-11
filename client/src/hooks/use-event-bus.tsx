@@ -30,7 +30,7 @@ export function EventBusProvider({ children }: { children: React.ReactNode }) {
   const { toast } = useToast();
 
   // Single global /ws/user connection
-  const pathFactory = useCallback((token: string) => wsPaths.user(token), []);
+  const pathFactory = useCallback(() => wsPaths.user(), []);
   const { lastEvent } = useSocket(pathFactory);
 
   // Subscriber registry: eventType → Set<handler>

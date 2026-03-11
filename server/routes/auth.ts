@@ -122,7 +122,62 @@ function createCaptchaChallenge() {
     .createHmac("sha256", CAPTCHA_SECRET)
     .update(`${id}:${word.toLowerCase()}:${expiry}`)
     .digest("hex");
-  return { id, word, expiry, signature };
+  const image = generateCaptchaSvg(word);
+  return { id, image, expiry, signature };
+}
+
+function generateCaptchaSvg(text: string): string {
+  const width = 200;
+  const height = 70;
+  const chars = text.split("");
+
+  // Random integer helper
+  const ri = (min: number, max: number) => crypto.randomInt(min, max + 1);
+
+  // Random muted colors for characters
+  const colors = ["#2d3748", "#4a5568", "#1a365d", "#2c5282", "#2b6cb0", "#553c9a", "#6b46c1", "#9b2c2c", "#c05621", "#2f855a"];
+
+  // Build noise lines
+  let noiseLines = "";
+  for (let i = 0; i < 6; i++) {
+    const x1 = ri(0, width);
+    const y1 = ri(0, height);
+    const x2 = ri(0, width);
+    const y2 = ri(0, height);
+    const color = colors[ri(0, colors.length - 1)];
+    noiseLines += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${color}" stroke-width="${ri(1, 2)}" opacity="0.3"/>`;
+  }
+
+  // Build noise dots
+  let noiseDots = "";
+  for (let i = 0; i < 30; i++) {
+    const cx = ri(0, width);
+    const cy = ri(0, height);
+    const color = colors[ri(0, colors.length - 1)];
+    noiseDots += `<circle cx="${cx}" cy="${cy}" r="${ri(1, 3)}" fill="${color}" opacity="0.25"/>`;
+  }
+
+  // Build distorted characters
+  const spacing = width / (chars.length + 1);
+  let charElements = "";
+  for (let i = 0; i < chars.length; i++) {
+    const x = spacing * (i + 1) + ri(-5, 5);
+    const y = height / 2 + ri(-8, 8);
+    const rotate = ri(-25, 25);
+    const fontSize = ri(24, 32);
+    const color = colors[ri(0, colors.length - 1)];
+    const fonts = ["monospace", "serif", "sans-serif", "Georgia", "Courier"];
+    const font = fonts[ri(0, fonts.length - 1)];
+    charElements += `<text x="${x}" y="${y}" font-size="${fontSize}" font-family="${font}" font-weight="bold" fill="${color}" transform="rotate(${rotate},${x},${y})" dominant-baseline="central" text-anchor="middle">${chars[i].replace(/&/g, "&amp;").replace(/</g, "&lt;")}</text>`;
+  }
+
+  // Wavy path for extra distortion
+  const waveY = ri(20, 50);
+  const wavePath = `<path d="M0,${waveY} Q${ri(30, 70)},${ri(0, height)} ${ri(90, 120)},${waveY} T${width},${ri(20, 50)}" stroke="${colors[ri(0, colors.length - 1)]}" fill="none" stroke-width="1.5" opacity="0.3"/>`;
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><rect width="${width}" height="${height}" fill="#f0f0f0" rx="8"/>${noiseLines}${noiseDots}${wavePath}${charElements}</svg>`;
+
+  return `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`;
 }
 
 function verifyCaptcha(id: string, answer: string, signature: string, expiry: number): boolean {
@@ -176,7 +231,7 @@ export function registerAuthRoutes(app: Express) {
   app.get("/api/auth/captcha", (_req, res) => {
     const challenge = createCaptchaChallenge();
     captchaStore.set(challenge.id, { signature: challenge.signature, expiry: challenge.expiry });
-    return res.json({ id: challenge.id, word: challenge.word });
+    return res.json({ id: challenge.id, image: challenge.image });
   });
 
   app.post("/api/auth/signup", signupLimiter, async (req, res) => {

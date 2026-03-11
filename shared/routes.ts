@@ -87,7 +87,7 @@ export const api = {
 } as const;
 
 export const wsPaths = {
-  room: (roomId: string, token: string) => `/ws/room/${roomId}?token=${encodeURIComponent(token)}`,
-  direct: (friendId: number, token: string) => `/ws/direct/${friendId}?token=${encodeURIComponent(token)}`,
-  user: (token: string) => `/ws/user?token=${encodeURIComponent(token)}`,
+  room: (roomId: string) => `/ws/room/${roomId}`,
+  direct: (friendId: number) => `/ws/direct/${friendId}`,
+  user: () => `/ws/user`,
 };
