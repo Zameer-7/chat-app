@@ -7,6 +7,7 @@ import { emitToUser, registerUserSocket, unregisterUserSocket } from "./notifier
 import { sendPushNotification } from "../routes/push";
 import { roomMessageQueue, directMessageQueue } from "../services/message-queue";
 import { cache, cacheKey } from "../services/cache";
+import { sanitizeText } from "../lib/sanitize";
 
 type SocketUser = { userId: number; username: string };
 
@@ -200,7 +201,7 @@ export function registerWebSocket(server: Server) {
             const msg = await repository.createRoomMessage({
               roomId,
               senderId: user.userId,
-              content: body.content ? String(body.content) : "",
+              content: body.content ? sanitizeText(String(body.content)) : "",
               messageType: effectiveRoomMsgType,
               gifUrl: body.gifUrl ? String(body.gifUrl) : null,
               replyToId: replyToId && Number.isInteger(replyToId) ? replyToId : null,
@@ -248,7 +249,7 @@ export function registerWebSocket(server: Server) {
             const msg = await repository.createDirectMessage(
               user.userId,
               friendId,
-              body.content ? String(body.content) : "",
+              body.content ? sanitizeText(String(body.content)) : "",
               effectiveDmMsgType,
               body.gifUrl ? String(body.gifUrl) : null,
               dmReplyToId && Number.isInteger(dmReplyToId) ? dmReplyToId : null,

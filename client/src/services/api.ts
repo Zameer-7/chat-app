@@ -22,34 +22,32 @@ export type SafeUser = {
 export type AuthResponse = { accessToken: string; refreshToken: string; user: SafeUser };
 export type SignupResponse = { requiresVerification: true; email: string } | AuthResponse;
 
-const TOKEN_KEY = "chat_app_token";
-const REFRESH_TOKEN_KEY = "chat_app_refresh_token";
 const REQUEST_TIMEOUT_MS = 15000;
 
-export function getToken() {
-  return localStorage.getItem(TOKEN_KEY);
+// ── In-memory token storage (never persisted to localStorage) ──────────────
+let _accessToken: string | null = null;
+
+export function getToken(): string | null {
+  return _accessToken;
 }
 
-export function getRefreshToken() {
-  return localStorage.getItem(REFRESH_TOKEN_KEY);
+export function getRefreshToken(): string | null {
+  // Refresh token is now stored in httpOnly cookie — not accessible from JS.
+  // Return null; the refresh endpoint reads the cookie server-side.
+  return null;
 }
 
 export function setToken(token: string | null) {
-  if (token) {
-    localStorage.setItem(TOKEN_KEY, token);
-  } else {
-    localStorage.removeItem(TOKEN_KEY);
-  }
+  _accessToken = token;
 }
 
-export function setTokens(accessToken: string, refreshToken: string) {
-  localStorage.setItem(TOKEN_KEY, accessToken);
-  localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
+export function setTokens(accessToken: string, _refreshToken?: string) {
+  _accessToken = accessToken;
+  // refreshToken is set as httpOnly cookie by the server — no client storage needed
 }
 
 export function clearTokens() {
-  localStorage.removeItem(TOKEN_KEY);
-  localStorage.removeItem(REFRESH_TOKEN_KEY);
+  _accessToken = null;
 }
 
 // Deduplicates concurrent refresh attempts
@@ -71,13 +69,12 @@ async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit = {}
 }
 
 async function refreshAccessToken(): Promise<string> {
-  const refreshToken = getRefreshToken();
-  if (!refreshToken) throw new Error("No refresh token");
-
+  // The refresh token is sent automatically as an httpOnly cookie
   const res = await fetchWithTimeout(buildApiUrl(api.auth.refresh), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ refreshToken }),
+    credentials: "include",
+    body: JSON.stringify({}),
   });
 
   if (!res.ok) throw new Error("Refresh failed");
@@ -103,7 +100,7 @@ export async function authFetch<T = unknown>(url: string, init: RequestInit = {}
 
   let res: Response;
   try {
-    res = await fetchWithTimeout(buildApiUrl(url), { ...init, headers });
+    res = await fetchWithTimeout(buildApiUrl(url), { ...init, headers, credentials: "include" });
   } catch (error) {
     if ((error as Error).name === "AbortError") {
       throw new Error("Request timed out. Please try again.");
@@ -111,15 +108,15 @@ export async function authFetch<T = unknown>(url: string, init: RequestInit = {}
     throw error;
   }
 
-  // Auto-refresh on 401 if we have a refresh token
-  if (res.status === 401 && getRefreshToken()) {
+  // Auto-refresh on 401 — refresh token is in httpOnly cookie
+  if (res.status === 401) {
     try {
       if (!refreshPromise) {
         refreshPromise = refreshAccessToken().finally(() => { refreshPromise = null; });
       }
       const newToken = await refreshPromise;
       headers.set("Authorization", `Bearer ${newToken}`);
-      res = await fetchWithTimeout(buildApiUrl(url), { ...init, headers });
+      res = await fetchWithTimeout(buildApiUrl(url), { ...init, headers, credentials: "include" });
     } catch {
       clearTokens();
       throw new Error("Session expired. Please log in again.");
@@ -170,6 +167,7 @@ export async function uploadImage(file: File): Promise<{ url: string }> {
   const res = await fetch(buildApiUrl("/api/messages/upload-image"), {
     method: "POST",
     headers: token ? { Authorization: `Bearer ${token}` } : {},
+    credentials: "include",
     body: formData,
   });
 

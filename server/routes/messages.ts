@@ -1,6 +1,7 @@
 import type { Express } from "express";
 import { authMiddleware, type AuthedRequest } from "../middleware/auth";
 import { repository } from "../models/repository";
+import { sanitizeText } from "../lib/sanitize";
 
 export function registerMessageRoutes(app: Express) {
   // Search messages in a room or DM conversation
@@ -27,7 +28,7 @@ export function registerMessageRoutes(app: Express) {
     if (!Number.isInteger(messageId) || messageId <= 0) {
       return res.status(400).json({ message: "Invalid message id" });
     }
-    const content = String(req.body?.message || req.body?.content || "").trim();
+    const content = sanitizeText(String(req.body?.message || req.body?.content || "").trim());
     if (!content) {
       return res.status(400).json({ message: "Message content is required" });
     }

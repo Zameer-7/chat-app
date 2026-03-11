@@ -6,8 +6,10 @@ import {
   clearTokens,
   signup as signupApi,
   verifyEmail as verifyEmailApi,
+  authFetch,
   type SafeUser,
 } from "@/services/api";
+import { api } from "@shared/routes";
 
 type AuthContextValue = {
   user: SafeUser | null;
@@ -93,6 +95,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUserState(updated);
       },
       logout() {
+        // Call server to clear the httpOnly refresh cookie
+        authFetch(api.auth.logout, { method: "POST" }).catch(() => {});
         clearTokens();
         setUserState(null);
         applyTheme(null);

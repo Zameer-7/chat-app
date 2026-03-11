@@ -8,6 +8,20 @@ import { db, pool } from "../db";
 import { repository } from "../models/repository";
 import { authMiddleware, type AuthedRequest, signAccessToken, signRefreshToken, verifyRefreshToken } from "../middleware/auth";
 import { generateOtp, sendOtpEmail, sendPasswordResetEmail, isEmailConfigured } from "../services/email";
+import { sanitizeText } from "../lib/sanitize";
+import { logSecurity } from "../lib/security-logger";
+import type { Response, CookieOptions } from "express";
+
+const REFRESH_COOKIE_NAME = "vibely_refresh";
+const isProduction = process.env.NODE_ENV === "production";
+
+const REFRESH_COOKIE_OPTS: CookieOptions = {
+  httpOnly: true,
+  secure: isProduction,
+  sameSite: isProduction ? "strict" : "lax",
+  path: "/api/auth",
+  maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days (matches refresh token expiry)
+};
 
 function buildTokens(user: { id: number; email: string; username: string }) {
   const payload = { userId: user.id, email: user.email, username: user.username };
@@ -15,6 +29,16 @@ function buildTokens(user: { id: number; email: string; username: string }) {
     accessToken: signAccessToken(payload),
     refreshToken: signRefreshToken(payload),
   };
+}
+
+/** Set the refresh token as an httpOnly cookie and return access token in body */
+function sendAuthResponse(res: Response, tokens: { accessToken: string; refreshToken: string }, user: unknown) {
+  res.cookie(REFRESH_COOKIE_NAME, tokens.refreshToken, REFRESH_COOKIE_OPTS);
+  return res.json({ accessToken: tokens.accessToken, refreshToken: tokens.refreshToken, user });
+}
+
+function clearRefreshCookie(res: Response) {
+  res.clearCookie(REFRESH_COOKIE_NAME, { path: "/api/auth" });
 }
 
 // ── Word CAPTCHA ──────────────────────────────────────────
@@ -291,7 +315,8 @@ export function registerAuthRoutes(app: Express) {
       await repository.verifyEmail(user.id);
       const safeUser = await repository.getUserById(user.id);
       const tokens = buildTokens(safeUser!);
-      return res.status(201).json({ ...tokens, user: safeUser });
+      res.status(201);
+      return sendAuthResponse(res, tokens, safeUser);
     } catch {
       return res.status(409).json({
         field: "username",
@@ -335,7 +360,7 @@ export function registerAuthRoutes(app: Express) {
     }
 
     const tokens = buildTokens(safeUser);
-    return res.json({ ...tokens, user: safeUser });
+    return sendAuthResponse(res, tokens, safeUser);
   });
 
   app.post("/api/auth/resend-otp", resendLimiter, async (req, res) => {
@@ -367,7 +392,20 @@ export function registerAuthRoutes(app: Express) {
     return res.json({ success: true });
   });
 
-  app.post("/api/auth/login", async (req, res) => {
+  // ── Login brute force protection ───────────────────────────
+  const loginLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 5,
+    message: { message: "Too many login attempts. Please try again after 15 minutes." },
+    standardHeaders: true,
+    legacyHeaders: false,
+    handler: (req, res) => {
+      logSecurity("RATE_LIMIT_HIT", { route: "/api/auth/login", ip: req.ip });
+      res.status(429).json({ message: "Too many login attempts. Please try again after 15 minutes." });
+    },
+  });
+
+  app.post("/api/auth/login", loginLimiter, async (req, res) => {
     const parsed = loginSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({ message: parsed.error.issues[0]?.message || "Invalid input" });
@@ -377,11 +415,13 @@ export function registerAuthRoutes(app: Express) {
     const user = await repository.getUserByEmail(email);
 
     if (!user) {
+      logSecurity("LOGIN_FAILURE", { email, reason: "unknown_email", ip: req.ip });
       return res.status(401).json({ message: "Invalid credentials" });
     }
 
     const valid = await bcrypt.compare(password, user.passwordHash);
     if (!valid) {
+      logSecurity("LOGIN_FAILURE", { email, reason: "wrong_password", ip: req.ip });
       return res.status(401).json({ message: "Invalid credentials" });
     }
 
@@ -404,7 +444,7 @@ export function registerAuthRoutes(app: Express) {
     }
 
     const tokens = buildTokens(safeUser);
-    return res.json({ ...tokens, user: safeUser });
+    return sendAuthResponse(res, tokens, safeUser);
   });
 
   app.get("/api/auth/me", authMiddleware, async (req: AuthedRequest, res) => {
@@ -416,6 +456,7 @@ export function registerAuthRoutes(app: Express) {
   });
 
   app.post("/api/auth/logout", authMiddleware, (_req, res) => {
+    clearRefreshCookie(res);
     return res.json({ success: true });
   });
 
@@ -429,7 +470,8 @@ export function registerAuthRoutes(app: Express) {
   });
 
   app.post("/api/auth/refresh", refreshLimiter, async (req, res) => {
-    const { refreshToken } = req.body;
+    // Accept refresh token from httpOnly cookie or request body (backward compat)
+    const refreshToken = req.cookies?.[REFRESH_COOKIE_NAME] || req.body?.refreshToken;
     if (!refreshToken || typeof refreshToken !== "string") {
       return res.status(400).json({ message: "Refresh token is required" });
     }
@@ -440,9 +482,12 @@ export function registerAuthRoutes(app: Express) {
       if (!user) {
         return res.status(401).json({ message: "User not found" });
       }
-      const accessToken = signAccessToken({ userId: user.id, email: user.email, username: user.username });
-      return res.json({ accessToken });
+      const newAccessToken = signAccessToken({ userId: user.id, email: user.email, username: user.username });
+      const newRefreshToken = signRefreshToken({ userId: user.id, email: user.email, username: user.username });
+      res.cookie(REFRESH_COOKIE_NAME, newRefreshToken, REFRESH_COOKIE_OPTS);
+      return res.json({ accessToken: newAccessToken });
     } catch {
+      clearRefreshCookie(res);
       return res.status(401).json({ message: "Invalid or expired refresh token" });
     }
   });

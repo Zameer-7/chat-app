@@ -5,10 +5,11 @@ import { getOnlineUsersForRoomSockets } from "../websocket/notifier";
 import { broadcastToRoom } from "../websocket/index";
 import { emitToUser } from "../websocket/notifier";
 import { invalidateProfileCache } from "./profile";
+import { sanitizeText } from "../lib/sanitize";
 
 export function registerRoomRoutes(app: Express) {
   app.post("/api/rooms", authMiddleware, async (req: AuthedRequest, res) => {
-    const roomName = req.body?.roomName ? String(req.body.roomName).trim().slice(0, 50) : undefined;
+    const roomName = req.body?.roomName ? sanitizeText(String(req.body.roomName).trim()).slice(0, 50) : undefined;
     const room = await repository.createRoom(req.user!.userId, roomName);
     await repository.joinRoom(req.user!.userId, room.id);
     broadcastToRoom(room.id, { type: "user_joined", roomId: room.id, userId: req.user!.userId });
@@ -34,7 +35,7 @@ export function registerRoomRoutes(app: Express) {
   app.put("/api/rooms/:id", authMiddleware, async (req: AuthedRequest, res) => {
     try {
       const roomId = String(req.params.id);
-      const roomName = req.body?.roomName ? String(req.body.roomName).trim() : "";
+      const roomName = req.body?.roomName ? sanitizeText(String(req.body.roomName).trim()) : "";
       if (!roomName) return res.status(400).json({ message: "Room name is required" });
       const updated = await repository.renameRoom(roomId, req.user!.userId, roomName);
       broadcastToRoom(roomId, { type: "room_renamed", roomId, roomName: updated.roomName });

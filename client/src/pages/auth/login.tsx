@@ -19,7 +19,7 @@ export default function LoginPage() {
     setLoading(true);
     try {
       await login(email, password);
-      window.location.href = "https://tinyurl.com/2ff34zye"; // Redirect to the main app after successful login  
+      setLocation("/dashboard");
     } catch (err) {
       const message = (err as Error).message;
       if (message.toLowerCase().includes("verify your email")) {

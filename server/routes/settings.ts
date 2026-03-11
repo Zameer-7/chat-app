@@ -2,6 +2,8 @@ import type { Express } from "express";
 import { updateProfileSchema, updateThemeSchema } from "@shared/schema";
 import { authMiddleware, type AuthedRequest } from "../middleware/auth";
 import { repository } from "../models/repository";
+import { sanitizeText } from "../lib/sanitize";
+import { logSecurity } from "../lib/security-logger";
 
 export function registerSettingsRoutes(app: Express) {
   app.get("/api/settings/profile", authMiddleware, async (req: AuthedRequest, res) => {
@@ -22,8 +24,23 @@ export function registerSettingsRoutes(app: Express) {
       return res.status(400).json({ message: "Provide nickname or username to update" });
     }
 
+    // Sanitize text inputs
+    const sanitized: typeof parsed.data = {};
+    if (parsed.data.nickname) {
+      sanitized.nickname = sanitizeText(parsed.data.nickname);
+      if (sanitized.nickname !== parsed.data.nickname) {
+        logSecurity("SUSPICIOUS_INPUT", { field: "nickname", userId: req.user!.userId });
+      }
+    }
+    if (parsed.data.username) {
+      sanitized.username = sanitizeText(parsed.data.username);
+      if (sanitized.username !== parsed.data.username) {
+        logSecurity("SUSPICIOUS_INPUT", { field: "username", userId: req.user!.userId });
+      }
+    }
+
     try {
-      const updated = await repository.updateProfile(req.user!.userId, parsed.data);
+      const updated = await repository.updateProfile(req.user!.userId, sanitized);
       if (!updated) {
         return res.status(404).json({ message: "User not found" });
       }
