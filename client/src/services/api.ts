@@ -24,6 +24,7 @@ export type SignupResponse = { requiresVerification: true; email: string } | Aut
 
 const TOKEN_KEY = "chat_app_token";
 const REFRESH_TOKEN_KEY = "chat_app_refresh_token";
+const REQUEST_TIMEOUT_MS = 15000;
 
 export function getToken() {
   return localStorage.getItem(TOKEN_KEY);
@@ -54,11 +55,26 @@ export function clearTokens() {
 // Deduplicates concurrent refresh attempts
 let refreshPromise: Promise<string> | null = null;
 
+async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit = {}) {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  if (init.signal) {
+    init.signal.addEventListener("abort", () => controller.abort(), { once: true });
+  }
+
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 async function refreshAccessToken(): Promise<string> {
   const refreshToken = getRefreshToken();
   if (!refreshToken) throw new Error("No refresh token");
 
-  const res = await fetch(buildApiUrl(api.auth.refresh), {
+  const res = await fetchWithTimeout(buildApiUrl(api.auth.refresh), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ refreshToken }),
@@ -85,7 +101,15 @@ export async function authFetch<T = unknown>(url: string, init: RequestInit = {}
     headers.set("Authorization", `Bearer ${token}`);
   }
 
-  let res = await fetch(buildApiUrl(url), { ...init, headers });
+  let res: Response;
+  try {
+    res = await fetchWithTimeout(buildApiUrl(url), { ...init, headers });
+  } catch (error) {
+    if ((error as Error).name === "AbortError") {
+      throw new Error("Request timed out. Please try again.");
+    }
+    throw error;
+  }
 
   // Auto-refresh on 401 if we have a refresh token
   if (res.status === 401 && getRefreshToken()) {
@@ -95,7 +119,7 @@ export async function authFetch<T = unknown>(url: string, init: RequestInit = {}
       }
       const newToken = await refreshPromise;
       headers.set("Authorization", `Bearer ${newToken}`);
-      res = await fetch(buildApiUrl(url), { ...init, headers });
+      res = await fetchWithTimeout(buildApiUrl(url), { ...init, headers });
     } catch {
       clearTokens();
       throw new Error("Session expired. Please log in again.");
