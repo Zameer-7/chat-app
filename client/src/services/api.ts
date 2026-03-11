@@ -19,12 +19,18 @@ export type SafeUser = {
   emailVerified: boolean;
 };
 
-export type AuthResponse = { token: string; user: SafeUser };
+export type AuthResponse = { accessToken: string; refreshToken: string; user: SafeUser };
 export type SignupResponse = { requiresVerification: true; email: string } | AuthResponse;
 
 const TOKEN_KEY = "chat_app_token";
+const REFRESH_TOKEN_KEY = "chat_app_refresh_token";
+
 export function getToken() {
   return localStorage.getItem(TOKEN_KEY);
+}
+
+export function getRefreshToken() {
+  return localStorage.getItem(REFRESH_TOKEN_KEY);
 }
 
 export function setToken(token: string | null) {
@@ -33,6 +39,36 @@ export function setToken(token: string | null) {
   } else {
     localStorage.removeItem(TOKEN_KEY);
   }
+}
+
+export function setTokens(accessToken: string, refreshToken: string) {
+  localStorage.setItem(TOKEN_KEY, accessToken);
+  localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
+}
+
+export function clearTokens() {
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(REFRESH_TOKEN_KEY);
+}
+
+// Deduplicates concurrent refresh attempts
+let refreshPromise: Promise<string> | null = null;
+
+async function refreshAccessToken(): Promise<string> {
+  const refreshToken = getRefreshToken();
+  if (!refreshToken) throw new Error("No refresh token");
+
+  const res = await fetch(buildApiUrl(api.auth.refresh), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ refreshToken }),
+  });
+
+  if (!res.ok) throw new Error("Refresh failed");
+
+  const data = await res.json();
+  setToken(data.accessToken);
+  return data.accessToken;
 }
 
 export async function authFetch<T = unknown>(url: string, init: RequestInit = {}): Promise<T> {
@@ -49,7 +85,23 @@ export async function authFetch<T = unknown>(url: string, init: RequestInit = {}
     headers.set("Authorization", `Bearer ${token}`);
   }
 
-  const res = await fetch(buildApiUrl(url), { ...init, headers });
+  let res = await fetch(buildApiUrl(url), { ...init, headers });
+
+  // Auto-refresh on 401 if we have a refresh token
+  if (res.status === 401 && getRefreshToken()) {
+    try {
+      if (!refreshPromise) {
+        refreshPromise = refreshAccessToken().finally(() => { refreshPromise = null; });
+      }
+      const newToken = await refreshPromise;
+      headers.set("Authorization", `Bearer ${newToken}`);
+      res = await fetch(buildApiUrl(url), { ...init, headers });
+    } catch {
+      clearTokens();
+      throw new Error("Session expired. Please log in again.");
+    }
+  }
+
   const contentType = res.headers.get("content-type") || "";
 
   if (!res.ok) {
@@ -135,6 +187,27 @@ export function resendOtp(email: string) {
   return authFetch<{ success: boolean }>(api.auth.resendOtp, {
     method: "POST",
     body: JSON.stringify({ email }),
+  });
+}
+
+export function forgotPassword(email: string) {
+  return authFetch<{ success: boolean }>(api.auth.forgotPassword, {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+}
+
+export function verifyResetCode(email: string, code: string) {
+  return authFetch<{ success: boolean }>(api.auth.verifyResetCode, {
+    method: "POST",
+    body: JSON.stringify({ email, code }),
+  });
+}
+
+export function resetPassword(email: string, code: string, newPassword: string) {
+  return authFetch<{ success: boolean }>(api.auth.resetPassword, {
+    method: "POST",
+    body: JSON.stringify({ email, code, newPassword }),
   });
 }
 

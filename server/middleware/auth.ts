@@ -13,12 +13,35 @@ export interface AuthedRequest extends Request {
 
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-me";
 
-export function signToken(payload: AuthPayload) {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: "7d" });
+/** Sign a short-lived access token (15 min) */
+export function signAccessToken(payload: AuthPayload) {
+  return jwt.sign({ ...payload, type: "access" }, JWT_SECRET, { expiresIn: "15m" });
 }
 
+/** Sign a long-lived refresh token (7 days) */
+export function signRefreshToken(payload: AuthPayload) {
+  return jwt.sign({ ...payload, type: "refresh" }, JWT_SECRET, { expiresIn: "7d" });
+}
+
+/** @deprecated Use signAccessToken instead */
+export const signToken = signAccessToken;
+
+/** Verify an access token (rejects refresh tokens) */
 export function verifyToken(token: string): AuthPayload {
-  return jwt.verify(token, JWT_SECRET) as AuthPayload;
+  const decoded = jwt.verify(token, JWT_SECRET) as AuthPayload & { type?: string };
+  if (decoded.type === "refresh") {
+    throw new Error("Refresh token cannot be used as access token");
+  }
+  return { userId: decoded.userId, email: decoded.email, username: decoded.username };
+}
+
+/** Verify a refresh token */
+export function verifyRefreshToken(token: string): AuthPayload {
+  const decoded = jwt.verify(token, JWT_SECRET) as AuthPayload & { type?: string };
+  if (decoded.type !== "refresh") {
+    throw new Error("Not a refresh token");
+  }
+  return { userId: decoded.userId, email: decoded.email, username: decoded.username };
 }
 
 export function authMiddleware(req: AuthedRequest, res: Response, next: NextFunction) {

@@ -120,14 +120,19 @@ export const signupSchema = z.object({
       "Username must be 3\u201320 characters and contain only letters, numbers, or underscores.",
     ),
   email: z.string().email(),
-  password: z.string().min(6),
+  password: z
+    .string()
+    .min(8, "Password must be at least 8 characters")
+    .regex(/[A-Z]/, "Password must contain at least one uppercase letter")
+    .regex(/[0-9]/, "Password must contain at least one number")
+    .regex(/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/, "Password must contain at least one special character"),
   captchaId: z.string().min(1, "Captcha is required"),
   captchaAnswer: z.string().min(1, "Please type the captcha word"),
 });
 
 export const loginSchema = z.object({
   email: z.string().email(),
-  password: z.string().min(6),
+  password: z.string().min(8, "Password must be at least 8 characters"),
 });
 
 export const sendFriendRequestSchema = z.object({

@@ -122,6 +122,18 @@ export function getFriendsStatus() {
   return authFetch<FriendStatus[]>(api.friends.status);
 }
 
+export type LastMessagePreview = {
+  friendId: number;
+  content: string;
+  messageType: string;
+  senderId: number;
+  createdAt: string;
+};
+
+export function getLastMessagePreviews() {
+  return authFetch<LastMessagePreview[]>(api.friends.lastMessages);
+}
+
 export type UnreadCounts = {
   dm: Array<{ friendId: number; count: number }>;
   rooms: Array<{ roomId: string; count: number }>;

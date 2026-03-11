@@ -47,6 +47,9 @@ export default function LoginPage() {
           {error && <p className="text-sm text-destructive">{error}</p>}
           <Input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} required />
           <Input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+          <div className="flex justify-end -mt-2">
+            <Link href="/forgot-password"><a className="text-xs font-medium text-muted-foreground hover:text-foreground underline">Forgot Password?</a></Link>
+          </div>
           <Button className="w-full rounded-xl" disabled={loading}>{loading ? "Signing in..." : "Login"}</Button>
           <p className="text-sm text-muted-foreground">
             No account? <Link href="/signup"><a className="font-semibold underline">Create one</a></Link>

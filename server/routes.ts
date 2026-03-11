@@ -97,6 +97,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     )
   `);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, is_read, created_at DESC)`);
+
+  // Password resets table
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS password_resets (
+      id SERIAL PRIMARY KEY,
+      user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      reset_code TEXT NOT NULL,
+      expires_at TIMESTAMP NOT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_password_resets_user ON password_resets(user_id)`);
   registerAuthRoutes(app);
   registerUserRoutes(app);
   registerProfileRoutes(app);

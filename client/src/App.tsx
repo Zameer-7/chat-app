@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Route, Switch, useLocation } from "wouter";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "./lib/queryClient";
@@ -9,10 +9,13 @@ import { SidebarLayout } from "@/components/layout/sidebar-layout";
 import { EventBusProvider } from "@/hooks/use-event-bus";
 import { usePwa } from "@/hooks/use-pwa";
 import { useToast } from "@/hooks/use-toast";
+import { buildApiUrl } from "@/config/api";
 
 import LoginPage from "@/pages/auth/login";
 import SignupPage from "@/pages/auth/signup";
 import VerifyEmailPage from "@/pages/auth/verify-email";
+import ForgotPasswordPage from "@/pages/auth/forgot-password";
+import ResetPasswordPage from "@/pages/auth/reset-password";
 import DashboardPage from "@/pages/dashboard/dashboard";
 import RoomsPage from "@/pages/dashboard/rooms";
 import FriendsPage from "@/pages/dashboard/friends";
@@ -36,6 +39,8 @@ const PAGE_TITLES: Record<string, string> = {
   "/search": "Search \u2022 Vibely",
   "/profile": "Profile \u2022 Vibely",
   "/settings": "Settings \u2022 Vibely",
+  "/forgot-password": "Forgot Password \u2022 Vibely",
+  "/reset-password": "Reset Password \u2022 Vibely",
 };
 
 function PageTitle() {
@@ -53,6 +58,52 @@ function PageTitle() {
   }, [location]);
 
   return null;
+}
+
+function ServerHealthMonitor() {
+  const [serverDown, setServerDown] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function checkHealth() {
+      try {
+        const res = await fetch(buildApiUrl("/api/auth/captcha"), {
+          method: "HEAD",
+          cache: "no-store",
+        });
+        if (mounted) setServerDown(!res.ok && res.status >= 500);
+      } catch {
+        if (mounted) setServerDown(true);
+      }
+    }
+
+    checkHealth();
+    const interval = setInterval(checkHealth, 30_000);
+    return () => { mounted = false; clearInterval(interval); };
+  }, []);
+
+  if (!serverDown) return null;
+
+  return (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+      <div className="mx-4 max-w-md rounded-2xl border border-white/70 bg-white p-8 text-center shadow-2xl">
+        <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-red-100">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4c-.77-1.33-2.69-1.33-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z" />
+          </svg>
+        </div>
+        <h2 className="text-xl font-bold text-gray-900">Server Temporarily Unavailable</h2>
+        <p className="mt-2 text-sm text-gray-600">
+          We’re sorry for the inconvenience. Our server is currently down and will be back up shortly. Please hang tight!
+        </p>
+        <div className="mt-5 flex items-center justify-center gap-2 text-xs text-gray-400">
+          <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-red-400" />
+          Checking connection every 30s…
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function PwaPrompts() {
@@ -144,6 +195,16 @@ function Router() {
           <VerifyEmailPage />
         </PublicOnly>
       </Route>
+      <Route path="/forgot-password">
+        <PublicOnly>
+          <ForgotPasswordPage />
+        </PublicOnly>
+      </Route>
+      <Route path="/reset-password">
+        <PublicOnly>
+          <ResetPasswordPage />
+        </PublicOnly>
+      </Route>
 
       <Route path="/dashboard">
         <AuthGate>
@@ -215,6 +276,7 @@ export default function App() {
       <TooltipProvider>
         <AuthProvider>
           <EventBusProvider>
+            <ServerHealthMonitor />
             <PwaPrompts />
             <PageTitle />
             <Toaster />

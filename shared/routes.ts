@@ -7,6 +7,10 @@ export const api = {
     verifyEmail: "/api/auth/verify-email",
     resendOtp: "/api/auth/resend-otp",
     captcha: "/api/auth/captcha",
+    forgotPassword: "/api/auth/forgot-password",
+    verifyResetCode: "/api/auth/verify-reset-code",
+    resetPassword: "/api/auth/reset-password",
+    refresh: "/api/auth/refresh",
   },
   users: {
     search: "/api/users/search",

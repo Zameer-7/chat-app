@@ -2,7 +2,8 @@ import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import {
   getCurrentUser,
   login as loginApi,
-  setToken,
+  setTokens,
+  clearTokens,
   signup as signupApi,
   verifyEmail as verifyEmailApi,
   type SafeUser,
@@ -43,7 +44,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUserState(current);
         }
       } catch {
-        setToken(null);
+        clearTokens();
         if (mounted) {
           setUserState(null);
         }
@@ -69,14 +70,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       loading,
       async login(email: string, password: string) {
         const result = await loginApi({ email, password });
-        setToken(result.token);
+        setTokens(result.accessToken, result.refreshToken);
         setUserState(result.user);
       },
       async signup(username: string, email: string, password: string, captchaId: string, captchaAnswer: string) {
         const result = await signupApi({ username, email, password, captchaId, captchaAnswer });
-        if ("token" in result) {
+        if ("accessToken" in result) {
           // Email not configured — user was auto-verified
-          setToken(result.token);
+          setTokens(result.accessToken, result.refreshToken);
           setUserState(result.user);
           return null;
         }
@@ -85,14 +86,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       },
       async verifyEmail(email: string, otp: string) {
         const result = await verifyEmailApi({ email, otp });
-        setToken(result.token);
+        setTokens(result.accessToken, result.refreshToken);
         setUserState(result.user);
       },
       setUser(updated: SafeUser) {
         setUserState(updated);
       },
       logout() {
-        setToken(null);
+        clearTokens();
         setUserState(null);
         applyTheme(null);
       },

@@ -34,3 +34,23 @@ export async function sendOtpEmail(to: string, otp: string): Promise<void> {
 
   await transporter.sendMail(mailOptions);
 }
+
+export async function sendPasswordResetEmail(to: string, code: string): Promise<void> {
+  const mailOptions = {
+    from: `"Vibely" <${process.env.EMAIL_USER}>`,
+    to,
+    subject: "Vibely — Password Reset Code",
+    html: `
+      <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px;background:#f9fafb;border-radius:12px">
+        <h2 style="color:#0d9488;margin-bottom:8px">Password Reset</h2>
+        <p>Your Vibely password reset code is:</p>
+        <div style="font-size:32px;letter-spacing:8px;font-weight:bold;text-align:center;padding:16px;background:#fff;border-radius:8px;border:1px solid #e5e7eb;margin:16px 0">
+          ${code}
+        </div>
+        <p style="color:#6b7280;font-size:14px">This code will expire in 10 minutes. If you didn't request this, you can safely ignore this email.</p>
+      </div>
+    `,
+  };
+
+  await transporter.sendMail(mailOptions);
+}

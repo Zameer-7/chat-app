@@ -158,6 +158,13 @@ export function registerWebSocket(server: Server) {
         const body = JSON.parse(raw.toString("utf8"));
 
         if (roomId && body.type === "room_message" && (body.content || body.gifUrl)) {
+          // Block unverified users from sending messages
+          const rawUser = await repository.getRawUserById(user.userId);
+          if (rawUser && !rawUser.emailVerified) {
+            safeSend(ws, { type: "error", message: "Please verify your email before sending messages." });
+            return;
+          }
+
           const member = await repository.isActiveRoomMember(user.userId, roomId);
           if (!member) {
             safeSend(ws, { type: "error", message: "You left this room. Rejoin to send messages." });
@@ -199,6 +206,13 @@ export function registerWebSocket(server: Server) {
         }
 
         if (friendId && body.type === "direct_message" && (body.content || body.gifUrl)) {
+          // Block unverified users from sending messages
+          const rawUser = await repository.getRawUserById(user.userId);
+          if (rawUser && !rawUser.emailVerified) {
+            safeSend(ws, { type: "error", message: "Please verify your email before sending messages." });
+            return;
+          }
+
           const clientMessageId = body.clientMessageId ? String(body.clientMessageId) : undefined;
           const isFriend = await repository.areFriends(user.userId, friendId);
           if (!isFriend) {

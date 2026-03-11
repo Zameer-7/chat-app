@@ -190,14 +190,22 @@ export default function SignupPage() {
           />
 
           {/* Password */}
-          <Input
-            type="password"
-            placeholder="Password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            autoComplete="new-password"
-          />
+          <div className="space-y-1">
+            <Input
+              type="password"
+              placeholder="Password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              autoComplete="new-password"
+            />
+            <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px]">
+              <span className={password.length >= 8 ? "text-green-600" : "text-muted-foreground"}>8+ chars</span>
+              <span className={/[A-Z]/.test(password) ? "text-green-600" : "text-muted-foreground"}>Uppercase</span>
+              <span className={/[0-9]/.test(password) ? "text-green-600" : "text-muted-foreground"}>Number</span>
+              <span className={/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password) ? "text-green-600" : "text-muted-foreground"}>Special char</span>
+            </div>
+          </div>
 
           {/* CAPTCHA */}
           <div className="space-y-2">

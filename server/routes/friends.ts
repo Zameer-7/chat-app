@@ -58,6 +58,12 @@ export function registerFriendRoutes(app: Express) {
   });
 
   app.post("/api/friend-requests", authMiddleware, async (req: AuthedRequest, res) => {
+    // Block unverified users from sending friend requests
+    const sender = await repository.getRawUserById(req.user!.userId);
+    if (sender && !sender.emailVerified) {
+      return res.status(403).json({ message: "Please verify your email before sending friend requests." });
+    }
+
     const parsed = sendFriendRequestSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({ message: parsed.error.issues[0]?.message || "Invalid input" });

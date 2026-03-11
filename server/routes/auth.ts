@@ -2,13 +2,19 @@ import type { Express } from "express";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import rateLimit from "express-rate-limit";
-import { loginSchema, signupSchema } from "@shared/schema";
+import { eq } from "drizzle-orm";
+import { loginSchema, signupSchema, users } from "@shared/schema";
+import { db, pool } from "../db";
 import { repository } from "../models/repository";
-import { authMiddleware, type AuthedRequest, signToken } from "../middleware/auth";
-import { generateOtp, sendOtpEmail, isEmailConfigured } from "../services/email";
+import { authMiddleware, type AuthedRequest, signAccessToken, signRefreshToken, verifyRefreshToken } from "../middleware/auth";
+import { generateOtp, sendOtpEmail, sendPasswordResetEmail, isEmailConfigured } from "../services/email";
 
-function buildToken(user: { id: number; email: string; username: string }) {
-  return signToken({ userId: user.id, email: user.email, username: user.username });
+function buildTokens(user: { id: number; email: string; username: string }) {
+  const payload = { userId: user.id, email: user.email, username: user.username };
+  return {
+    accessToken: signAccessToken(payload),
+    refreshToken: signRefreshToken(payload),
+  };
 }
 
 // ── Word CAPTCHA ──────────────────────────────────────────
@@ -97,6 +103,12 @@ const CAPTCHA_WORDS = [
   "bxfwp", "njqrk", "gdvlm", "pxhcf", "wtnbz",
   "rjkvm", "fxdqn", "lzhpw", "ctbjg", "mkxvr",
   "qnwft", "hbzpd", "vjcmx", "gkrln", "xftwb",
+  // Alphanumeric combos (anti-bot)
+  "rt457fh", "k3m9xp", "w8dn2q", "p5vt7j", "b6nf3r",
+  "x2hk9m", "j7qw4c", "d9lp6v", "g4rx8n", "f3mt5z",
+  "n8kv2d", "t6px9h", "c5wj7b", "m2rg4f", "v7nd3k",
+  "h9xt6p", "q4fm8w", "z3kn5r", "r6pd2j", "w5bx7g",
+  "l8tv4m", "j2nk9f", "p7hd3c", "x6mw5t", "g9rq4v",
 ];
 
 const CAPTCHA_SECRET = process.env.JWT_SECRET || "vibely-captcha-secret";
@@ -199,7 +211,7 @@ export function registerAuthRoutes(app: Express) {
       });
     }
 
-    const passwordHash = await bcrypt.hash(password, 10);
+    const passwordHash = await bcrypt.hash(password, 12);
     const nickname = username;
 
     try {
@@ -223,8 +235,8 @@ export function registerAuthRoutes(app: Express) {
       // Email service not configured — auto-verify and return token
       await repository.verifyEmail(user.id);
       const safeUser = await repository.getUserById(user.id);
-      const token = buildToken(safeUser!);
-      return res.status(201).json({ token, user: safeUser });
+      const tokens = buildTokens(safeUser!);
+      return res.status(201).json({ ...tokens, user: safeUser });
     } catch {
       return res.status(409).json({
         field: "username",
@@ -267,8 +279,8 @@ export function registerAuthRoutes(app: Express) {
       return res.status(404).json({ message: "User not found" });
     }
 
-    const token = buildToken(safeUser);
-    return res.json({ token, user: safeUser });
+    const tokens = buildTokens(safeUser);
+    return res.json({ ...tokens, user: safeUser });
   });
 
   app.post("/api/auth/resend-otp", resendLimiter, async (req, res) => {
@@ -300,7 +312,16 @@ export function registerAuthRoutes(app: Express) {
     return res.json({ success: true });
   });
 
-  app.post("/api/auth/login", async (req, res) => {
+  // ── Login brute force protection ───────────────────────────
+  const loginLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 5,
+    message: { message: "Too many login attempts. Please try again after 15 minutes." },
+    standardHeaders: true,
+    legacyHeaders: false,
+  });
+
+  app.post("/api/auth/login", loginLimiter, async (req, res) => {
     const parsed = loginSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({ message: parsed.error.issues[0]?.message || "Invalid input" });
@@ -336,8 +357,8 @@ export function registerAuthRoutes(app: Express) {
       return res.status(404).json({ message: "User not found" });
     }
 
-    const token = buildToken(safeUser);
-    return res.json({ token, user: safeUser });
+    const tokens = buildTokens(safeUser);
+    return res.json({ ...tokens, user: safeUser });
   });
 
   app.get("/api/auth/me", authMiddleware, async (req: AuthedRequest, res) => {
@@ -349,6 +370,144 @@ export function registerAuthRoutes(app: Express) {
   });
 
   app.post("/api/auth/logout", authMiddleware, (_req, res) => {
+    return res.json({ success: true });
+  });
+
+  // ── Refresh Token ──────────────────────────────────────────
+  const refreshLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 30,
+    message: { message: "Too many refresh attempts. Please try again later." },
+    standardHeaders: true,
+    legacyHeaders: false,
+  });
+
+  app.post("/api/auth/refresh", refreshLimiter, async (req, res) => {
+    const { refreshToken } = req.body;
+    if (!refreshToken || typeof refreshToken !== "string") {
+      return res.status(400).json({ message: "Refresh token is required" });
+    }
+
+    try {
+      const payload = verifyRefreshToken(refreshToken);
+      const user = await repository.getUserById(payload.userId);
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
+      }
+      const accessToken = signAccessToken({ userId: user.id, email: user.email, username: user.username });
+      return res.json({ accessToken });
+    } catch {
+      return res.status(401).json({ message: "Invalid or expired refresh token" });
+    }
+  });
+
+  // ── Forgot Password ────────────────────────────────────────
+  const forgotPasswordLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000, // 1 hour
+    max: 5,
+    message: { message: "Too many reset attempts. Please try again later." },
+    standardHeaders: true,
+    legacyHeaders: false,
+  });
+
+  const resetCodeVerifyLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 10,
+    message: { message: "Too many attempts. Please try again later." },
+    standardHeaders: true,
+    legacyHeaders: false,
+  });
+
+  app.post("/api/auth/forgot-password", forgotPasswordLimiter, async (req, res) => {
+    const { email } = req.body;
+    if (!email || typeof email !== "string") {
+      return res.status(400).json({ message: "Email is required" });
+    }
+
+    // Always return success (don't reveal if email exists)
+    const user = await repository.getUserByEmail(email);
+    if (!user) {
+      return res.json({ success: true });
+    }
+
+    if (!isEmailConfigured) {
+      return res.status(503).json({ message: "Email service is not configured" });
+    }
+
+    // Delete any existing reset codes for this user
+    await pool.query("DELETE FROM password_resets WHERE user_id = $1", [user.id]);
+
+    // Generate and store a new code
+    const code = crypto.randomInt(100000, 999999).toString();
+    await pool.query(
+      "INSERT INTO password_resets (user_id, reset_code, expires_at) VALUES ($1, $2, NOW() + INTERVAL '10 minutes')",
+      [user.id, code]
+    );
+
+    try {
+      await sendPasswordResetEmail(email, code);
+    } catch (err) {
+      console.error("Failed to send reset email:", err);
+    }
+
+    return res.json({ success: true });
+  });
+
+  app.post("/api/auth/verify-reset-code", resetCodeVerifyLimiter, async (req, res) => {
+    const { email, code } = req.body;
+    if (!email || !code) {
+      return res.status(400).json({ message: "Email and code are required" });
+    }
+
+    const user = await repository.getUserByEmail(email);
+    if (!user) {
+      return res.status(400).json({ message: "Invalid or expired code" });
+    }
+
+    const result = await pool.query(
+      "SELECT * FROM password_resets WHERE user_id = $1 AND reset_code = $2 AND expires_at > NOW()",
+      [user.id, code]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(400).json({ message: "Invalid or expired code" });
+    }
+
+    return res.json({ success: true });
+  });
+
+  app.post("/api/auth/reset-password", resetCodeVerifyLimiter, async (req, res) => {
+    const { email, code, newPassword } = req.body;
+    if (!email || !code || !newPassword) {
+      return res.status(400).json({ message: "Email, code, and new password are required" });
+    }
+
+    if (typeof newPassword !== "string" || newPassword.length < 8) {
+      return res.status(400).json({ message: "Password must be at least 8 characters" });
+    }
+
+    const user = await repository.getUserByEmail(email);
+    if (!user) {
+      return res.status(400).json({ message: "Invalid or expired code" });
+    }
+
+    // Verify the code is still valid
+    const result = await pool.query(
+      "SELECT * FROM password_resets WHERE user_id = $1 AND reset_code = $2 AND expires_at > NOW()",
+      [user.id, code]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(400).json({ message: "Invalid or expired code" });
+    }
+
+    // Hash and update password
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+    await db.update(users).set({ passwordHash }).where(eq(users.id, user.id));
+
+    // Delete all reset codes for this user
+    await pool.query("DELETE FROM password_resets WHERE user_id = $1", [user.id]);
+
     return res.json({ success: true });
   });
 }
