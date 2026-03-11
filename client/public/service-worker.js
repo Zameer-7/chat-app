@@ -36,9 +36,10 @@ self.addEventListener("fetch", (event) => {
       .then((response) => {
         // Clone into cache only for same-origin, successful responses
         if (response.ok && response.type === "basic") {
+          const responseToCache = response.clone();
           caches
             .open(CACHE_NAME)
-            .then((cache) => cache.put(event.request, response.clone()));
+            .then((cache) => cache.put(event.request, responseToCache));
         }
         return response;
       })
