@@ -5,6 +5,7 @@ import { ArrowLeft, Archive, BellOff, Image, MoreVertical, Reply, Search, Trash2
 import { wsPaths } from "@shared/routes";
 import { useAuth } from "@/hooks/use-auth";
 import { useSocket } from "@/hooks/use-socket";
+import { useGlobalEvent } from "@/hooks/use-event-bus";
 import { ChatWindow } from "@/components/chat/chat-window";
 import { getDirectMessages, getFriends, searchMessages, bulkDeleteMessages, deleteDirectChat, archiveChat, unarchiveChat, muteChat, unmuteChat, getChatSettings, type ChatMessage, type ChatSetting } from "@/services/chat-api";
 import { uploadImage } from "@/services/api";
@@ -85,6 +86,8 @@ export default function DirectChatPage() {
 
   const [liveMessages, setLiveMessages] = useState<ChatMessage[]>([]);
   const [typingUsers, setTypingUsers] = useState<string[]>([]);
+  const [friendOnline, setFriendOnline] = useState<boolean | null>(null);
+  const [friendLastSeen, setFriendLastSeen] = useState<string | null>(null);
   const tempId = useRef(-1);
   const emojiPickerRef = useRef<HTMLDivElement>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -94,6 +97,8 @@ export default function DirectChatPage() {
     setLiveMessages([]);
     setReplyTo(null);
     setTypingUsers([]);
+    setFriendOnline(null);
+    setFriendLastSeen(null);
   }, [friendId]);
 
   useEffect(() => {
@@ -144,7 +149,19 @@ export default function DirectChatPage() {
         setTypingUsers((prev) => prev.filter((u) => u !== uname));
       }
     }
+    if (lastEvent?.type === "presence_update" && Number(lastEvent.userId) === friendId) {
+      setFriendOnline(Boolean(lastEvent.isOnline));
+      if (lastEvent.lastSeen) setFriendLastSeen(String(lastEvent.lastSeen));
+    }
   }, [lastEvent]);
+
+  // Also listen for presence updates from the global /ws/user socket
+  useGlobalEvent("presence_update", (event) => {
+    if (Number(event.userId) === friendId) {
+      setFriendOnline(Boolean(event.isOnline));
+      if (event.lastSeen) setFriendLastSeen(String(event.lastSeen));
+    }
+  });
 
   useEffect(() => {
     if (!showEmoji) return;
@@ -291,12 +308,12 @@ export default function DirectChatPage() {
           <h2 className="text-base font-black truncate">Chat with {friend?.nickname || `User ${friendId}`}</h2>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <span className={`w-2.5 h-2.5 rounded-full ${friend?.isOnline ? "bg-green-500" : "bg-gray-400"}`} />
+          <span className={`w-2.5 h-2.5 rounded-full ${(friendOnline ?? friend?.isOnline) ? "bg-green-500" : "bg-gray-400"}`} />
           <span className="text-sm text-muted-foreground hidden sm:inline">
-            {friend?.isOnline
+            {(friendOnline ?? friend?.isOnline)
               ? "Online"
-              : friend?.lastSeen
-                ? `Last seen ${formatLastSeen(friend.lastSeen)}`
+              : (friendLastSeen || friend?.lastSeen)
+                ? `Last seen ${formatLastSeen(friendLastSeen || friend.lastSeen)}`
                 : "Offline"}
           </span>
           {isMuted && <span className="text-sm" title="Muted">🔕</span>}

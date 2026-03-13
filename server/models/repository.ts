@@ -95,8 +95,13 @@ export const repository = {
       .update(users)
       .set(updates)
       .where(eq(users.id, userId));
-    // Invalidate friend caches so presence is fresh
+    // Invalidate this user's own friends cache
     cache.del(cacheKey.friends(userId));
+    // Also invalidate every friend's cache so they see updated presence
+    const friendIds = await this.listFriendIds(userId);
+    for (const fid of friendIds) {
+      cache.del(cacheKey.friends(fid));
+    }
   },
 
   async updateTheme(userId: number, chatTheme: SafeUser["chatTheme"]) {
