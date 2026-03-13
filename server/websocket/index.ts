@@ -8,6 +8,7 @@ import { sendPushNotification } from "../routes/push";
 import { roomMessageQueue, directMessageQueue } from "../services/message-queue";
 import { cache, cacheKey } from "../services/cache";
 import { sanitizeText } from "../lib/sanitize";
+import { logSecurity } from "../lib/security-logger";
 
 type SocketUser = { userId: number; username: string };
 
@@ -198,10 +199,16 @@ export function registerWebSocket(server: Server) {
 
           // Queue the DB write so messages are never lost under load
           roomMessageQueue.enqueue(async () => {
+            const rawContent = body.content ? String(body.content) : "";
+            const sanitizedContent = rawContent ? sanitizeText(rawContent) : "";
+            if (rawContent && sanitizedContent !== rawContent) {
+              logSecurity("SCRIPT_INJECTION", { channel: "ws_room", userId: user.userId, roomId });
+            }
+
             const msg = await repository.createRoomMessage({
               roomId,
               senderId: user.userId,
-              content: body.content ? sanitizeText(String(body.content)) : "",
+              content: sanitizedContent,
               messageType: effectiveRoomMsgType,
               gifUrl: body.gifUrl ? String(body.gifUrl) : null,
               replyToId: replyToId && Number.isInteger(replyToId) ? replyToId : null,
@@ -246,10 +253,16 @@ export function registerWebSocket(server: Server) {
 
           // Queue the DB write so messages are never lost under load
           directMessageQueue.enqueue(async () => {
+            const rawContent = body.content ? String(body.content) : "";
+            const sanitizedContent = rawContent ? sanitizeText(rawContent) : "";
+            if (rawContent && sanitizedContent !== rawContent) {
+              logSecurity("SCRIPT_INJECTION", { channel: "ws_direct", userId: user.userId, friendId });
+            }
+
             const msg = await repository.createDirectMessage(
               user.userId,
               friendId,
-              body.content ? sanitizeText(String(body.content)) : "",
+              sanitizedContent,
               effectiveDmMsgType,
               body.gifUrl ? String(body.gifUrl) : null,
               dmReplyToId && Number.isInteger(dmReplyToId) ? dmReplyToId : null,

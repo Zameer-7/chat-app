@@ -27,7 +27,7 @@ function toSafeUser(user: typeof users.$inferSelect): SafeUser {
     email: user.email,
     username: user.username,
     nickname: user.nickname,
-    avatarUrl: user.avatarUrl,
+    avatarUrl: user.avatarPath || user.avatarUrl,
     bio: user.bio,
     chatTheme: user.chatTheme as SafeUser["chatTheme"],
     nicknameLastChanged: user.nicknameLastChanged,
@@ -153,9 +153,13 @@ export const repository = {
     return toSafeUser(updated);
   },
 
-  async updateProfileMeta(userId: number, payload: { avatarUrl?: string; bio?: string }) {
+  async updateProfileMeta(userId: number, payload: { avatarPath?: string; bio?: string }) {
     const updates: Partial<typeof users.$inferInsert> = {};
-    if (payload.avatarUrl !== undefined) updates.avatarUrl = payload.avatarUrl || null;
+    if (payload.avatarPath !== undefined) {
+      updates.avatarPath = payload.avatarPath || null;
+      // Keep legacy column empty once avatar_path is in use.
+      updates.avatarUrl = null;
+    }
     if (payload.bio !== undefined) updates.bio = payload.bio || null;
 
     const [updated] = await db.update(users).set(updates).where(eq(users.id, userId)).returning();
@@ -246,7 +250,7 @@ export const repository = {
   async getRoomMembers(roomId: string) {
     return db.execute(sql`
       select ur.user_id as "userId", ur.joined_at as "joinedAt", ur.left_at as "leftAt",
-             u.nickname, u.username, u.avatar_url as "avatarUrl", u.is_online as "isOnline",
+              u.nickname, u.username, coalesce(u.avatar_path, u.avatar_url) as "avatarUrl", u.is_online as "isOnline",
              r.created_by as "createdBy"
       from user_rooms ur
       join users u on u.id = ur.user_id
@@ -477,7 +481,7 @@ export const repository = {
   async listIncomingFriendRequests(userId: number) {
     return db.execute(sql`
       select fr.id, fr.sender_id as "senderId", fr.receiver_id as "receiverId", fr.status, fr.created_at as "createdAt",
-             u.nickname as "senderNickname", u.username as "senderUsername", u.email as "senderEmail", u.avatar_url as "senderAvatarUrl"
+              u.nickname as "senderNickname", u.username as "senderUsername", u.email as "senderEmail", coalesce(u.avatar_path, u.avatar_url) as "senderAvatarUrl"
       from friend_requests fr
       join users u on u.id = fr.sender_id
       where fr.receiver_id = ${userId} and fr.status = 'pending'
@@ -488,7 +492,7 @@ export const repository = {
   async listOutgoingFriendRequests(userId: number) {
     return db.execute(sql`
       select fr.id, fr.sender_id as "senderId", fr.receiver_id as "receiverId", fr.status, fr.created_at as "createdAt",
-             u.nickname as "receiverNickname", u.username as "receiverUsername", u.avatar_url as "receiverAvatarUrl"
+              u.nickname as "receiverNickname", u.username as "receiverUsername", coalesce(u.avatar_path, u.avatar_url) as "receiverAvatarUrl"
       from friend_requests fr
       join users u on u.id = fr.receiver_id
       where fr.sender_id = ${userId} and fr.status = 'pending'
@@ -538,7 +542,7 @@ export const repository = {
     if (cached) return cached;
 
     const result = await db.execute(sql`
-      select u.id, u.email, u.username, u.nickname, u.avatar_url as "avatarUrl", u.bio, u.chat_theme as "chatTheme",
+      select u.id, u.email, u.username, u.nickname, coalesce(u.avatar_path, u.avatar_url) as "avatarUrl", u.bio, u.chat_theme as "chatTheme",
              u.nickname_last_changed as "nicknameLastChanged", u.username_last_changed as "usernameLastChanged",
              u.created_at as "createdAt", u.is_online as "isOnline", u.last_seen as "lastSeen"
       from friend_requests fr

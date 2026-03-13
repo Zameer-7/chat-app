@@ -8,6 +8,10 @@ import { NovaLogo } from "@/components/layout/nova-logo";
 export default function LoginPage() {
   const { login } = useAuth();
   const [, setLocation] = useLocation();
+  const redirectParam = new URLSearchParams(window.location.search).get("redirect") || undefined;
+  const safeRedirect = redirectParam?.startsWith("/") && !redirectParam.startsWith("//")
+    ? redirectParam
+    : "/dashboard";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -18,8 +22,8 @@ export default function LoginPage() {
     setError(null);
     setLoading(true);
     try {
-      await login(email, password);
-      setLocation("/dashboard");
+      await login(email, password, safeRedirect);
+      setLocation(safeRedirect);
     } catch (err) {
       const message = (err as Error).message;
       if (message.toLowerCase().includes("verify your email")) {

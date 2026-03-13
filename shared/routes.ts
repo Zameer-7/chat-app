@@ -67,6 +67,7 @@ export const api = {
   profile: {
     me: "/api/profile/me",
     update: "/api/profile/update",
+    uploadAvatar: "/api/profile/upload-avatar",
     deleteAvatar: "/api/profile/avatar",
   },
   settings: {

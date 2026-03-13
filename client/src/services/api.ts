@@ -19,7 +19,7 @@ export type SafeUser = {
   emailVerified: boolean;
 };
 
-export type AuthResponse = { accessToken: string; refreshToken: string; user: SafeUser };
+export type AuthResponse = { accessToken: string; user: SafeUser; redirect?: string };
 export type SignupResponse = { requiresVerification: true; email: string } | AuthResponse;
 
 const REQUEST_TIMEOUT_MS = 15000;
@@ -108,8 +108,11 @@ export async function authFetch<T = unknown>(url: string, init: RequestInit = {}
     throw error;
   }
 
+  // Avoid refresh loops for unauthenticated/public auth endpoints.
+  const skipRefresh = /^\/api\/auth\/(login|signup|captcha|verify-email|resend-otp|forgot-password|verify-reset-code|reset-password)$/i.test(url);
+
   // Auto-refresh on 401 — refresh token is in httpOnly cookie
-  if (res.status === 401) {
+  if (res.status === 401 && !skipRefresh) {
     try {
       if (!refreshPromise) {
         refreshPromise = refreshAccessToken().finally(() => { refreshPromise = null; });
@@ -191,7 +194,7 @@ export function checkUsernameAvailability(username: string) {
   );
 }
 
-export function login(payload: { email: string; password: string }) {
+export function login(payload: { email: string; password: string; redirect?: string }) {
   return authFetch<AuthResponse>(api.auth.login, {
     method: "POST",
     body: JSON.stringify(payload),

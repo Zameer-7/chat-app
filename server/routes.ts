@@ -64,6 +64,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT false`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS email_otp TEXT`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS otp_expiry TIMESTAMP`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_path TEXT`);
+  await pool.query(`UPDATE users SET avatar_path = avatar_url WHERE avatar_path IS NULL AND avatar_url LIKE '/uploads/%'`);
   // Mark all existing users as verified so they can still log in
   await pool.query(`UPDATE users SET email_verified = true WHERE email_verified = false AND email_otp IS NULL AND created_at < NOW() - INTERVAL '1 minute'`);
 

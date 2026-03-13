@@ -51,16 +51,19 @@ app.use(express.urlencoded({ extended: false }));
 import pathModule from "path";
 app.use("/uploads", express.static(pathModule.resolve("uploads")));
 
-function getAllowedOrigin() {
+function getAllowedOrigin(req: Request) {
   const rawOrigin = process.env.CORS_ORIGIN;
-  if (!rawOrigin) return "*";
+  if (!rawOrigin) {
+    const requestOrigin = req.headers.origin;
+    return requestOrigin || "http://localhost:5173";
+  }
 
   const sanitized = rawOrigin.trim().replace(/^['"]|['"]$/g, "");
   return sanitized || "*";
 }
 
 app.use((req, res, next) => {
-  const allowedOrigin = getAllowedOrigin();
+  const allowedOrigin = getAllowedOrigin(req);
   res.header("Access-Control-Allow-Origin", allowedOrigin);
   res.header("Access-Control-Allow-Headers", "Authorization, Content-Type");
   res.header("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");

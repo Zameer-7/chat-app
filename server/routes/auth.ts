@@ -8,7 +8,7 @@ import { db, pool } from "../db";
 import { repository } from "../models/repository";
 import { authMiddleware, type AuthedRequest, signAccessToken, signRefreshToken, verifyRefreshToken } from "../middleware/auth";
 import { generateOtp, sendOtpEmail, sendPasswordResetEmail, isEmailConfigured } from "../services/email";
-import { sanitizeText } from "../lib/sanitize";
+import { getSafeRedirect, isSafeRedirect } from "../lib/sanitize";
 import { logSecurity } from "../lib/security-logger";
 import type { Response, CookieOptions } from "express";
 
@@ -32,9 +32,14 @@ function buildTokens(user: { id: number; email: string; username: string }) {
 }
 
 /** Set the refresh token as an httpOnly cookie and return access token in body */
-function sendAuthResponse(res: Response, tokens: { accessToken: string; refreshToken: string }, user: unknown) {
+function sendAuthResponse(
+  res: Response,
+  tokens: { accessToken: string; refreshToken: string },
+  user: unknown,
+  redirect?: string,
+) {
   res.cookie(REFRESH_COOKIE_NAME, tokens.refreshToken, REFRESH_COOKIE_OPTS);
-  return res.json({ accessToken: tokens.accessToken, refreshToken: tokens.refreshToken, user });
+  return res.json({ accessToken: tokens.accessToken, user, ...(redirect ? { redirect } : {}) });
 }
 
 function clearRefreshCookie(res: Response) {
@@ -411,7 +416,15 @@ export function registerAuthRoutes(app: Express) {
       return res.status(400).json({ message: parsed.error.issues[0]?.message || "Invalid input" });
     }
 
-    const { email, password } = parsed.data;
+    const { email, password, redirect } = parsed.data;
+    const redirectFromQuery = typeof req.query.redirect === "string" ? req.query.redirect : undefined;
+    const requestedRedirect = redirectFromQuery ?? redirect;
+    if (requestedRedirect && !isSafeRedirect(requestedRedirect)) {
+      logSecurity("INVALID_REDIRECT", { ip: req.ip, redirect: requestedRedirect });
+      return res.status(400).json({ message: "Invalid redirect target" });
+    }
+    const safeRedirect = getSafeRedirect(requestedRedirect, "/dashboard");
+
     const user = await repository.getUserByEmail(email);
 
     if (!user) {
@@ -444,7 +457,7 @@ export function registerAuthRoutes(app: Express) {
     }
 
     const tokens = buildTokens(safeUser);
-    return sendAuthResponse(res, tokens, safeUser);
+    return sendAuthResponse(res, tokens, safeUser, safeRedirect);
   });
 
   app.get("/api/auth/me", authMiddleware, async (req: AuthedRequest, res) => {
@@ -455,7 +468,7 @@ export function registerAuthRoutes(app: Express) {
     return res.json(user);
   });
 
-  app.post("/api/auth/logout", authMiddleware, (_req, res) => {
+  app.post("/api/auth/logout", (_req, res) => {
     clearRefreshCookie(res);
     return res.json({ success: true });
   });
@@ -470,8 +483,8 @@ export function registerAuthRoutes(app: Express) {
   });
 
   app.post("/api/auth/refresh", refreshLimiter, async (req, res) => {
-    // Accept refresh token from httpOnly cookie or request body (backward compat)
-    const refreshToken = req.cookies?.[REFRESH_COOKIE_NAME] || req.body?.refreshToken;
+    // Refresh token is accepted only from secure httpOnly cookie.
+    const refreshToken = req.cookies?.[REFRESH_COOKIE_NAME];
     if (!refreshToken || typeof refreshToken !== "string") {
       return res.status(400).json({ message: "Refresh token is required" });
     }

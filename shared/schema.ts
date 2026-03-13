@@ -11,6 +11,7 @@ export const users = pgTable("users", {
   nicknameLastChanged: timestamp("nickname_last_changed"),
   usernameLastChanged: timestamp("username_last_changed"),
   chatTheme: text("chat_theme").notNull().default("light"),
+  avatarPath: text("avatar_path"),
   avatarUrl: text("avatar_url"),
   bio: text("bio"),
   isOnline: boolean("is_online").notNull().default(false),
@@ -133,6 +134,7 @@ export const signupSchema = z.object({
 export const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8, "Password must be at least 8 characters"),
+  redirect: z.string().max(2048).optional(),
 });
 
 export const sendFriendRequestSchema = z.object({
@@ -163,7 +165,9 @@ export const updateThemeSchema = z.object({
 });
 
 export const updateProfileMetaSchema = z.object({
-  avatarUrl: z.string().max(200000).optional(),
+  avatarPath: z.string().max(512).optional(),
+  // Backward compatibility for older clients
+  avatarUrl: z.string().max(512).optional(),
   bio: z.string().max(150).optional(),
 });
 

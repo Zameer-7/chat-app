@@ -1,5 +1,6 @@
 import { api } from "@shared/routes";
-import { authFetch, type SafeUser } from "./api";
+import { buildApiUrl } from "@/config/api";
+import { authFetch, getToken, type SafeUser } from "./api";
 
 export type ProfileResponse = {
   username: string;
@@ -18,11 +19,37 @@ export function getMyProfile() {
   return authFetch<ProfileResponse>(api.profile.me);
 }
 
-export function updateMyProfile(payload: { avatarUrl?: string; bio?: string }) {
+export function updateMyProfile(payload: { avatarPath?: string; bio?: string }) {
   return authFetch<SafeUser>(api.profile.update, {
     method: "PUT",
     body: JSON.stringify(payload),
   });
+}
+
+export async function uploadAvatar(file: File): Promise<{ avatarPath: string }> {
+  const token = getToken();
+  const formData = new FormData();
+  formData.append("avatar", file);
+
+  const res = await fetch(buildApiUrl(api.profile.uploadAvatar), {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    credentials: "include",
+    body: formData,
+  });
+
+  if (!res.ok) {
+    let message = "Avatar upload failed";
+    try {
+      const body = await res.json();
+      message = body.message || message;
+    } catch {
+      // ignore parse errors
+    }
+    throw new Error(message);
+  }
+
+  return res.json();
 }
 
 export function deleteAvatar() {

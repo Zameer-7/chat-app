@@ -1,12 +1,12 @@
 import { format } from "date-fns";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
-import { getMyProfile, updateMyProfile } from "@/services/profile-api";
+import { getMyProfile, updateMyProfile, uploadAvatar } from "@/services/profile-api";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Camera, Users, Hash, CalendarDays, MoreVertical, Trash2, Upload } from "lucide-react";
+import { Users, Hash, CalendarDays, MoreVertical, Trash2, Upload } from "lucide-react";
 import { deleteAvatar } from "@/services/profile-api";
 import {
   DropdownMenu,
@@ -17,35 +17,7 @@ import {
 
 const BIO_MAX = 150;
 const FALLBACK_POLL_MS = 30_000;
-const AVATAR_MAX_SIZE = 512;
-
-function resizeImage(file: File, maxSize: number): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    const url = URL.createObjectURL(file);
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      let { width, height } = img;
-      if (width > maxSize || height > maxSize) {
-        const ratio = Math.min(maxSize / width, maxSize / height);
-        width = Math.round(width * ratio);
-        height = Math.round(height * ratio);
-      }
-      const canvas = document.createElement("canvas");
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return reject(new Error("Canvas not supported"));
-      ctx.drawImage(img, 0, 0, width, height);
-      resolve(canvas.toDataURL("image/jpeg", 0.85));
-    };
-    img.onerror = () => {
-      URL.revokeObjectURL(url);
-      reject(new Error("Failed to load image"));
-    };
-    img.src = url;
-  });
-}
+const AVATAR_MAX_BYTES = 5 * 1024 * 1024;
 
 function initials(name: string) {
   return name
@@ -105,16 +77,22 @@ export default function ProfilePage() {
   });
 
   const handleAvatarFile = useCallback(async (file: File) => {
-    if (!file.type.startsWith("image/")) {
-      toast({ title: "Please select an image file", variant: "destructive" });
+    const allowedTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+    if (!allowedTypes.includes(file.type)) {
+      toast({ title: "Only JPG, JPEG, PNG, and WebP are allowed", variant: "destructive" });
       return;
     }
+    if (file.size > AVATAR_MAX_BYTES) {
+      toast({ title: "Image must be smaller than 5 MB", variant: "destructive" });
+      return;
+    }
+
     try {
-      const resized = await resizeImage(file, AVATAR_MAX_SIZE);
-      setAvatarPreview(resized);
-      mutation.mutate({ avatarUrl: resized });
-    } catch {
-      toast({ title: "Failed to process image", variant: "destructive" });
+      const { avatarPath } = await uploadAvatar(file);
+      setAvatarPreview(avatarPath);
+      mutation.mutate({ avatarPath });
+    } catch (err) {
+      toast({ title: "Failed to upload image", description: (err as Error).message, variant: "destructive" });
     }
   }, [mutation, toast]);
 

@@ -14,7 +14,7 @@ import { api } from "@shared/routes";
 type AuthContextValue = {
   user: SafeUser | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string, redirect?: string) => Promise<void>;
   signup: (username: string, email: string, password: string, captchaId: string, captchaAnswer: string) => Promise<string | null>;
   verifyEmail: (email: string, otp: string) => Promise<void>;
   setUser: (user: SafeUser) => void;
@@ -70,16 +70,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     () => ({
       user,
       loading,
-      async login(email: string, password: string) {
-        const result = await loginApi({ email, password });
-        setTokens(result.accessToken, result.refreshToken);
+      async login(email: string, password: string, redirect?: string) {
+        const result = await loginApi({ email, password, redirect });
+        setTokens(result.accessToken);
         setUserState(result.user);
       },
       async signup(username: string, email: string, password: string, captchaId: string, captchaAnswer: string) {
         const result = await signupApi({ username, email, password, captchaId, captchaAnswer });
         if ("accessToken" in result) {
           // Email not configured — user was auto-verified
-          setTokens(result.accessToken, result.refreshToken);
+          setTokens(result.accessToken);
           setUserState(result.user);
           return null;
         }
@@ -88,7 +88,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       },
       async verifyEmail(email: string, otp: string) {
         const result = await verifyEmailApi({ email, otp });
-        setTokens(result.accessToken, result.refreshToken);
+        setTokens(result.accessToken);
         setUserState(result.user);
       },
       setUser(updated: SafeUser) {
